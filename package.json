@@ -1,0 +1,18 @@
+{
+  "name": "skybreak-protocol",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Original futuristic arena FPS for the browser, built on Three.js.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}

@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#05070a" />
+  <title>SKYBREAK PROTOCOL</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#9650;</text></svg>" />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div id="game"></div>
+  <div id="fade"></div>
+
+  <!-- In-game HUD -->
+  <div id="hud" class="hidden">
+    <div id="crosshair">
+      <span class="ch-line ch-t"></span>
+      <span class="ch-line ch-b"></span>
+      <span class="ch-line ch-l"></span>
+      <span class="ch-line ch-r"></span>
+      <span class="ch-dot"></span>
+    </div>
+    <div id="reload-bar" class="hidden"><div id="reload-fill"></div></div>
+    <div id="hitmarker">
+      <span></span><span></span><span></span><span></span>
+    </div>
+    <div id="damage-vignette"></div>
+
+    <div id="hud-top">
+      <div class="panel">
+        <div class="hud-label">CREDITS</div>
+        <div id="hud-credits" class="hud-big credits">0</div>
+      </div>
+      <div class="panel">
+        <div class="hud-label">HOSTILES</div>
+        <div id="hud-enemies" class="hud-big">0</div>
+      </div>
+      <div class="panel">
+        <div class="hud-label">SCORE</div>
+        <div id="hud-score" class="hud-big">0</div>
+      </div>
+    </div>
+
+    <!-- Boss fight bar -->
+    <div id="boss-bar" class="hidden">
+      <div id="boss-name">WARDEN-01</div>
+      <div class="bar big"><div id="boss-fill"></div></div>
+    </div>
+
+    <!-- Minimap, top-right -->
+    <div id="minimap-wrap">
+      <canvas id="minimap" width="168" height="168"></canvas>
+      <div id="minimap-hint">TAC-MAP</div>
+    </div>
+
+    <!-- Quest tracker, top-left -->
+    <div id="quest-panel" class="panel hidden">
+      <div class="hud-label">OBJECTIVE</div>
+      <div id="quest-title"></div>
+      <div id="quest-text"></div>
+    </div>
+
+    <div id="hud-bl" class="panel">
+      <div class="bar-row">
+        <span class="hud-label">HULL</span>
+        <div class="bar"><div id="bar-health" class="bar-fill health"></div></div>
+        <span id="txt-health" class="bar-num">100</span>
+      </div>
+      <div class="bar-row">
+        <span class="hud-label">PLATE</span>
+        <div class="bar"><div id="bar-armor" class="bar-fill armor"></div></div>
+        <span id="txt-armor" class="bar-num">50</span>
+      </div>
+      <div class="bar-row">
+        <span class="hud-label">BOOST</span>
+        <div class="bar"><div id="bar-energy" class="bar-fill energy"></div></div>
+        <span id="txt-energy" class="bar-num">100</span>
+      </div>
+    </div>
+
+    <div id="hud-br" class="panel">
+      <div id="hud-weapon" class="hud-label">VX-9 RIPTIDE</div>
+      <div id="hud-ammo"><span id="ammo-mag">30</span><span id="ammo-sep">/</span><span id="ammo-reserve">180</span></div>
+      <div id="hud-slots"></div>
+      <div id="hud-util">
+        <span class="util frag">G ✸ <b id="util-frag">2</b></span>
+        <span class="util recon">Q ◎ <b id="util-recon">1</b></span>
+        <span class="util shopkey">B SHOP</span>
+      </div>
+    </div>
+
+    <div id="prompt" class="hidden"></div>
+    <!-- Battle royale overlay -->
+    <div id="br" class="hidden">
+      <div id="br-top">
+        <div class="br-stat"><span>ALIVE</span><b id="br-alive">50</b></div>
+        <div class="br-stat"><span>ELIMS</span><b id="br-kills">0</b></div>
+        <div class="br-stat storm"><span id="br-storm-label">STORM</span><b id="br-storm">--</b></div>
+      </div>
+      <div id="br-mats">
+        <div class="mat wood"><i></i><b id="mat-wood">0</b></div>
+        <div class="mat stone"><i></i><b id="mat-stone">0</b></div>
+        <div class="mat metal"><i></i><b id="mat-metal">0</b></div>
+      </div>
+      <div id="br-shield-wrap">
+        <div id="br-shield"><div id="br-shield-fill"></div></div>
+      </div>
+      <div id="br-build" class="hidden">
+        <div class="bp" data-p="wall">Q<span>WALL</span></div>
+        <div class="bp" data-p="ramp">R<span>RAMP</span></div>
+        <div class="bp" data-p="floor">F<span>FLOOR</span></div>
+        <div class="bp" data-p="cone">C<span>CONE</span></div>
+        <div id="br-buildmat">WOOD</div>
+      </div>
+      <div id="br-alt" class="hidden"><b>0</b><span>M</span></div>
+      <div id="br-toast" class="hidden"><b></b><span></span></div>
+      <div id="br-feed"></div>
+      <div id="br-use" class="hidden"><div id="br-use-fill"></div><span></span></div>
+      <div id="br-storm-warn"></div>
+    </div>
+
+    <!-- Active contract objective. -->
+    <div id="objective" class="hidden"><b></b><span></span></div>
+
+    <!-- Cafe / diner menu, shown while standing at a counter. -->
+    <div id="menu-board" class="hidden"></div>
+
+    <!-- GTAZ free roam: wanted stars, speedometer, district name. -->
+    <div id="gtaz" class="hidden">
+      <div id="gtaz-stars"></div>
+      <div id="gtaz-speedo" class="hidden"><b id="gtaz-kmh">0</b><span>KM/H</span></div>
+      <div id="gtaz-district"></div>
+      <div id="gtaz-cave" class="hidden"></div>
+    </div>
+
+    <div id="adrenaline"></div>
+    <div id="streak" class="hidden">
+      <div id="streak-name"></div>
+      <div id="streak-sub"></div>
+    </div>
+    <div id="streak-count" class="hidden"></div>
+    <div id="killfeed"></div>
+    <div id="wave-banner" class="hidden"><div id="banner-main"></div><div id="banner-sub"></div></div>
+    <div id="hud-fps"></div>
+    <div id="comms"></div>
+    <div id="lock-hint" class="hidden">CLICK TO ENABLE PRECISE AIM &nbsp;·&nbsp; fallback mouse-look active</div>
+  </div>
+
+  <!-- Supply uplink (shop) -->
+  <div id="shop" class="hidden">
+    <div class="shop-inner">
+      <div id="shop-title">SUPPLY UPLINK</div>
+      <div id="shop-credits">CREDITS: <b>0</b></div>
+      <div class="shop-h">WEAPONS</div>
+      <div id="shop-weapons" class="shop-grid"></div>
+      <div class="shop-h">EQUIPMENT &amp; SUPPORT</div>
+      <div id="shop-items" class="shop-grid"></div>
+      <button id="btn-shop-close" class="btn-main small">RESUME [B]</button>
+    </div>
+  </div>
+
+  <!-- Main menu -->
+  <div id="menu">
+    <div class="menu-inner">
+      <div id="menu-title">SKYBREAK<span> PROTOCOL</span></div>
+      <div id="menu-sub">ORBITAL CAMPAIGN // HALCYON PLATFORM</div>
+      <p id="menu-story">2231. The Halcyon station intercepted a signal from beyond the heliopause.
+        Its AI, HELIOS, went silent for nine seconds — and when it spoke again, half the crew
+        and every salvage gang aboard answered to its voice. Your squad's dropship VANTAGE-6
+        was shot down on approach; you and Sgt. Daniel Reyes crawled out of the wreck.
+        The free survivors have work for you. Every job uncovers more of the truth.</p>
+
+      <div id="mission-block">
+        <div class="menu-h center">MODE</div>
+        <div id="mode-chips" class="chips"></div>
+        <div id="mode-blurb"></div>
+
+        <div id="skirmish-panel">
+          <div class="menu-h center">CHOOSE YOUR OPERATOR</div>
+          <div id="op-cards"></div>
+          <div class="menu-h center">ARMORY <span id="armory-count"></span></div>
+          <div id="armory">
+            <div id="armory-filters" class="chips small"></div>
+            <div id="armory-body">
+              <div id="armory-grid"></div>
+              <div id="armory-detail">
+                <img id="armory-shot" alt="" />
+                <div id="armory-name">—</div>
+                <div id="armory-class"></div>
+                <div id="armory-trait"></div>
+                <div id="armory-traitdesc"></div>
+                <div id="armory-stats"></div>
+                <button id="btn-equip" class="mini-btn">EQUIP AS PRIMARY</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="career-panel" class="hidden">
+          <div class="menu-h center">BUILD YOUR OPERATIVE</div>
+          <div id="career-box">
+            <img id="career-portrait" alt="Your operative" />
+            <div id="career-form">
+              <input id="career-name" maxlength="12" spellcheck="false" placeholder="CALLSIGN" />
+              <div class="career-row"><span>SKIN</span><div id="career-skins" class="swatch-row"></div></div>
+              <div class="career-row"><span>HAIR</span><div id="career-hair" class="chips small"></div></div>
+              <div class="career-row"><span>HAIR COLOR</span><div id="career-haircolors" class="swatch-row"></div></div>
+              <div class="career-row"><span>JACKET</span><div id="career-colors" class="swatch-row"></div></div>
+              <div class="career-row"><span>ACCENT</span><div id="career-accents" class="swatch-row"></div></div>
+              <div class="career-row"><span>PRIMARY</span><div id="career-primary" class="chips small"></div></div>
+              <div id="career-note">Sidearm, 60 plate and a survivor's instinct included. Sgt. Reyes is waiting at the crash site.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Wrapped so the arena picker can be hidden on its own. Modes that
+             own their map hide this block; without the wrapper the only thing
+             available to hide was #mission-block, which took the mode chips
+             and the whole armory down with it. -->
+        <div id="map-block">
+          <div class="menu-h center">MISSION</div>
+          <div id="map-chips" class="chips"></div>
+          <div id="map-blurb"></div>
+        </div>
+        <!-- GTAZ only: FUN lets you dial speed and health up to 7x, REAL
+             plays the game at its designed numbers. Hidden in every other
+             mode, which is always REAL. -->
+        <div id="rules-block" style="display:none">
+          <div class="menu-h center">RULES</div>
+          <div id="rules-chips" class="chips"></div>
+          <div id="rules-blurb"></div>
+          <div id="rules-dials" class="rules-dials">
+            <label class="dial">
+              <span class="dial-name">SPEED</span>
+              <input id="dial-speed" type="range" min="1" max="7" step="0.5" value="7">
+              <span id="dial-speed-val" class="dial-val">7.0&times;</span>
+            </label>
+            <label class="dial">
+              <span class="dial-name">HEALTH</span>
+              <input id="dial-health" type="range" min="1" max="7" step="0.5" value="7">
+              <span id="dial-health-val" class="dial-val">7.0&times;</span>
+            </label>
+            <div class="dial dial-toggle">
+              <span class="dial-name">POLICE</span>
+              <div id="police-chips" class="chips small"></div>
+              <span></span>
+            </div>
+            <div class="dial-note" id="dial-note"></div>
+          </div>
+        </div>
+        <div class="menu-h center">THREAT LEVEL</div>
+        <div id="diff-chips" class="chips"></div>
+        <div id="diff-blurb"></div>
+      </div>
+      <button id="btn-continue" class="btn-main hidden">CONTINUE<span id="continue-sub"></span></button>
+      <button id="btn-start" class="btn-main">DEPLOY</button>
+      <button id="btn-newrun" class="btn-main small alt hidden">ABANDON SAVE — START OVER</button>
+
+      <div class="menu-columns">
+        <div class="menu-col">
+          <div class="menu-h">CONTROLS</div>
+          <table class="controls">
+            <tr><td>W A S D</td><td>Move</td></tr>
+            <tr><td>SHIFT</td><td>Sprint</td></tr>
+            <tr><td>SPACE</td><td>Jump / Boost jump (air)</td></tr>
+            <tr><td>C / CTRL</td><td>Crouch — Slide while sprinting</td></tr>
+            <tr><td>W + wall (air)</td><td>Wall run · SPACE to leap off</td></tr>
+            <tr><td>MOUSE 1 / 2</td><td>Fire / Aim down sights</td></tr>
+            <tr><td>R</td><td>Reload</td></tr>
+            <tr><td>1–5 / WHEEL</td><td>Switch weapon</td></tr>
+            <tr><td>E</td><td>Talk / Interact</td></tr>
+            <tr><td>G</td><td>Frag charge</td></tr>
+            <tr><td>Q</td><td>Recon pulse</td></tr>
+            <tr><td>B</td><td>Supply uplink · build mode (BR)</td></tr>
+            <tr><td>T</td><td>Third / first person (BR)</td></tr>
+            <tr><td>H</td><td>Harvest materials (BR)</td></tr>
+            <tr><td>X</td><td>Use shield / medkit (BR)</td></tr>
+            <tr><td>F</td><td>Enter / exit vehicle (GTAZ)</td></tr>
+            <tr><td>V</td><td>Punch (GTAZ)</td></tr>
+            <tr><td>H</td><td>Lift / drop a car's bonnet (GTAZ)</td></tr>
+            <tr><td>SHIFT / SPACE</td><td>Boost · handbrake (driving)</td></tr>
+          </table>
+        </div>
+        <div class="menu-col">
+          <div class="menu-h">SETTINGS</div>
+          <label class="setting">Sensitivity <span id="val-sens">1.0</span>
+            <input id="set-sens" type="range" min="0.3" max="2.5" step="0.05" value="1.0" />
+          </label>
+          <label class="setting">ADS sensitivity <span id="val-adssens">0.8</span>
+            <input id="set-adssens" type="range" min="0.3" max="1.5" step="0.05" value="0.8" />
+          </label>
+          <label class="setting">Field of view <span id="val-fov">80</span>
+            <input id="set-fov" type="range" min="60" max="110" step="1" value="80" />
+          </label>
+          <label class="setting">Volume <span id="val-vol">70</span>
+            <input id="set-vol" type="range" min="0" max="100" step="5" value="70" />
+          </label>
+          <label class="setting">Render scale <span id="val-rscale">1.0</span>
+            <input id="set-rscale" type="range" min="0.5" max="1.5" step="0.05" value="1.0" />
+          </label>
+          <label class="setting check"><input id="set-bob" type="checkbox" checked /> Head bob</label>
+          <label class="setting check"><input id="set-shake" type="checkbox" checked /> Screen shake</label>
+          <label class="setting check"><input id="set-inverty" type="checkbox" /> Invert Y axis</label>
+          <label class="setting check"><input id="set-shadows" type="checkbox" checked /> Shadows</label>
+          <label class="setting check"><input id="set-bloom" type="checkbox" checked /> Bloom glow</label>
+          <label class="setting check"><input id="set-minimap" type="checkbox" checked /> Tac-map</label>
+          <button id="btn-replay-intro" class="mini-btn">REPLAY CRASH INTRO</button>
+          <div class="career-row" style="margin-bottom:12px;"><span>QUALITY</span><div id="quality-chips" class="chips small"></div></div>
+          <label class="setting check"><input id="set-music" type="checkbox" checked /> Dynamic music</label>
+          <label class="setting check"><input id="set-voice" type="checkbox" checked /> Spoken dialogue</label>
+          <label class="setting check"><input id="set-subs" type="checkbox" checked /> Subtitles</label>
+          <label class="setting check"><input id="set-fps" type="checkbox" checked /> Show FPS</label>
+
+          <div class="menu-h" style="margin-top:14px;">CROSSHAIR</div>
+          <div id="ch-swatches"></div>
+          <label class="setting">Size <span id="val-chsize">9</span>
+            <input id="set-chsize" type="range" min="4" max="16" step="1" value="9" />
+          </label>
+          <label class="setting">Gap <span id="val-chgap">6</span>
+            <input id="set-chgap" type="range" min="2" max="14" step="1" value="6" />
+          </label>
+          <label class="setting check"><input id="set-chdot" type="checkbox" checked /> Center dot</label>
+        </div>
+      </div>
+      <div id="menu-note">Find the survivors. Take their quests. Learn what HELIOS heard.</div>
+    </div>
+  </div>
+
+  <!-- Death screen -->
+  <div id="death" class="hidden">
+    <div class="menu-inner">
+      <div id="death-title">SIGNAL LOST</div>
+      <div id="death-stats"></div>
+      <button id="btn-restart" class="btn-main">REDEPLOY</button>
+      <div id="death-note">Redeploying keeps your quest progress and gear. 20% of credits are lost to the void.</div>
+    </div>
+  </div>
+
+  <!-- Battle royale result -->
+  <div id="br-result" class="hidden">
+    <div class="menu-inner">
+      <div id="br-place"></div>
+      <div id="br-place-sub"></div>
+      <div id="br-result-stats"></div>
+      <button id="btn-br-again" class="btn-main">NEW MATCH</button>
+      <button id="btn-br-menu" class="btn-main small alt">BACK TO MENU</button>
+    </div>
+  </div>
+
+  <!-- Pause overlay -->
+  <div id="pause" class="hidden">
+    <div class="menu-inner">
+      <div id="pause-title">LINK SUSPENDED</div>
+      <button id="btn-resume" class="btn-main">RESUME</button>
+      <button id="btn-tomenu" class="btn-main small alt">ABANDON RUN — MENU</button>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
