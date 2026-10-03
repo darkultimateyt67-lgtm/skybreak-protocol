@@ -1,7 +1,19 @@
 import { Game } from './engine/Game.js';
+import { Loading } from './ui/Loading.js';
 
-const game = new Game(document.getElementById('game'));
-game.init();
+// The loading screen is already up from index.html. Let it paint the step
+// before init() blocks the thread building the menu's world, then clear it.
+(async () => {
+  Loading.step('Building the world', 0.08, 0.92, 5000);
+  await Loading.frame();
 
-// Exposed for the developer console and automated smoke tests.
-window.GAME = game;
+  const game = new Game(document.getElementById('game'));
+  game.init();
+
+  // Exposed for the developer console and automated smoke tests.
+  window.GAME = game;
+
+  Loading.step('Ready', 1);
+  await Loading.frame();
+  Loading.hide();
+})();

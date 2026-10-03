@@ -203,6 +203,7 @@ export class TreeBuilder {
 
     const h = sp.height * scale * (0.85 + rand() * 0.35);
     const r = sp.radius * scale * (0.85 + rand() * 0.3);
+    const v0 = this.vertCount, i0 = this.indices.length;
     const origin = new THREE.Vector3(x, baseY, z);
     const dir = new THREE.Vector3((rand() - 0.5) * 0.08, 1, (rand() - 0.5) * 0.08).normalize();
     this._root = [x, baseY, z, h];
@@ -220,29 +221,60 @@ export class TreeBuilder {
       this._tube(start, end, r * 0.55, r * 0.16, 4, null, shade);
     }
 
+    (this._ranges || (this._ranges = [])).push({ x, z, v0, v1: this.vertCount, i0, i1: this.indices.length });
     this.trunkColliders.push({ x, z, r: r * 1.5, h });
     return { height: h, radius: r };
   }
 
-  /** Fuse everything grown so far into one mesh. */
+  /**
+   * Fuse everything grown so far into meshes, one per 48 m tile of ground.
+   * One mesh for the whole forest could never be culled: it was drawn in full,
+   * twice (colour and shadow), whichever way you looked.
+   */
   build() {
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(this.positions, 3));
-    geo.setAttribute('normal', new THREE.Float32BufferAttribute(this.normals, 3));
-    geo.setAttribute('color', new THREE.Float32BufferAttribute(this.colors, 3));
-    geo.setAttribute('aRoot', new THREE.Float32BufferAttribute(this.roots, 4));
-    geo.setIndex(this.indices);
-    geo.computeBoundingSphere();
-    // The crowns move, so the bounds get a little slack.
-    geo.boundingSphere.radius += 2;
-
     const mat = WIND.patchBranches(new THREE.MeshLambertMaterial({ vertexColors: true }));
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
     // Shadows sway with the branches that cast them.
-    mesh.customDepthMaterial = WIND.patchBranches(new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking }));
-    return mesh;
+    const depth = WIND.patchBranches(new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking }));
+    const CELL = 48;
+    const cells = new Map();
+    for (const t of this._ranges || []) {
+      const k = Math.floor(t.x / CELL) + ',' + Math.floor(t.z / CELL);
+      if (!cells.has(k)) cells.set(k, []);
+      cells.get(k).push(t);
+    }
+    const group = new THREE.Group();
+    for (const trees of cells.values()) {
+      let nv = 0, ni = 0;
+      for (const t of trees) { nv += t.v1 - t.v0; ni += t.i1 - t.i0; }
+      const pos = new Float32Array(nv * 3), nrm = new Float32Array(nv * 3), col = new Float32Array(nv * 3);
+      const root = new Float32Array(nv * 4);
+      const idx = new Uint32Array(ni);
+      let vo = 0, io = 0;
+      for (const t of trees) {
+        const n = t.v1 - t.v0;
+        pos.set(this.positions.slice(t.v0 * 3, t.v1 * 3), vo * 3);
+        nrm.set(this.normals.slice(t.v0 * 3, t.v1 * 3), vo * 3);
+        col.set(this.colors.slice(t.v0 * 3, t.v1 * 3), vo * 3);
+        root.set(this.roots.slice(t.v0 * 4, t.v1 * 4), vo * 4);
+        for (let i = t.i0; i < t.i1; i++) idx[io++] = this.indices[i] - t.v0 + vo;
+        vo += n;
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      geo.setAttribute('aRoot', new THREE.BufferAttribute(root, 4));
+      geo.setIndex(new THREE.BufferAttribute(idx, 1));
+      geo.computeBoundingSphere();
+      // The crowns move, so the bounds get a little slack.
+      geo.boundingSphere.radius += 2;
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.customDepthMaterial = depth;
+      group.add(mesh);
+    }
+    return group;
   }
 
   get stats() {

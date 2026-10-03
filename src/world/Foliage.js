@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { WIND } from './Wind.js';
+import { chunkInstanced } from './Chunk.js';
 
 /**
  * Foliage — 200,000 individually placed leaves across the grove, rendered as
@@ -326,9 +327,13 @@ export class Foliage {
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
 
-    this.leafMesh = mesh;
+    mesh.count = i;
+    // Tiled so canopies behind the camera are skipped. Pad covers the
+    // whole-tree wind bend applied in the vertex shader.
+    this.leafMesh = chunkInstanced(mesh, 40, 4);
+    geo.dispose();
     this.leafCount = i;
-    this.world.group.add(mesh);
+    this.world.group.add(this.leafMesh);
   }
 
   update(dt) {

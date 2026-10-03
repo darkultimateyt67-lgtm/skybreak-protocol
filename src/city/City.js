@@ -211,54 +211,70 @@ export class City {
    */
   _mergeStatics() {
     const w = this.world;
-    const groups = new Map();       // material -> geometry list
-    const doomed = [];
-
+    // Batched per material AND per 160 m tile. One batch per material
+    // spanning the whole city could never be culled, so all of it — and all
+    // of it again for the shadow map — was drawn every frame, whichever way
+    // the camera faced.
+    const CELL = 160;
+    const groups = new Map();       // material -> tile -> meshes
     for (const obj of w.group.children) {
       if (!obj.isMesh || obj.isInstancedMesh) continue;
       const mat = obj.material;
-      if (!mat || Array.isArray(mat) || mat.transparent) continue;
+      if (!mat || Array.isArray(mat)) continue;
+      // Transparent parts merge only when they are many panes of one shared
+      // material (shop glazing); anything else keeps its own sort order.
+      if (mat.transparent && mat !== this._shopGlass) continue;
       if (!obj.geometry || !obj.geometry.attributes.position) continue;
       obj.updateMatrixWorld(true);
-      const g = obj.geometry.clone();
-      g.applyMatrix4(obj.matrixWorld);
-      // Merging needs a consistent attribute set.
-      if (!g.attributes.normal) g.computeVertexNormals();
-      if (!g.attributes.uv) {
-        const n = g.attributes.position.count;
-        g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(n * 2), 2));
-      }
-      if (!groups.has(mat)) groups.set(mat, []);
-      groups.get(mat).push(g);
-      doomed.push(obj);
+      const e = obj.matrixWorld.elements;
+      const key = Math.floor(e[12] / CELL) + ',' + Math.floor(e[14] / CELL);
+      let tiles = groups.get(mat);
+      if (!tiles) groups.set(mat, (tiles = new Map()));
+      if (!tiles.has(key)) tiles.set(key, []);
+      tiles.get(key).push(obj);
     }
 
+    // Written straight into one buffer per material, transformed on the way
+    // in. The old path cloned all ~118k parts first, and then removed each
+    // original with group.remove() — a search-and-splice through a 118k-long
+    // child list, every time. Together that was over twenty seconds of load.
     let batches = 0;
-    for (const [mat, list] of groups) {
-      if (list.length < 2) { for (const g of list) g.dispose(); continue; }
-      const merged = mergeGeometries(list, true);
-      for (const g of list) g.dispose();
-      if (!merged) continue;
-      const mesh = new THREE.Mesh(merged, mat);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      // Already in world space.
-      mesh.matrixAutoUpdate = false;
-      w.group.add(mesh);
-      batches++;
-    }
-    let removed = 0;
-    for (const obj of doomed) {
-      if (obj.parent === w.group && groups.get(obj.material)?.length >= 2) {
-        w.group.remove(obj);
-        // NOT disposed: _block hands every box the same shared BoxGeometry,
-        // so releasing it here would pull the geometry out from under every
-        // other box in the game. The clone we merged from is already gone;
-        // this original belongs to the world.
-        removed++;
+    this._detailTiles = [];
+    const folded = new Set();
+    for (const [mat, tiles] of groups) {
+      let total = 0;
+      for (const l of tiles.values()) total += l.length;
+      if (total < 2) continue;
+      for (const list of tiles.values()) {
+        const merged = bakeWorld(list);
+        const mesh = new THREE.Mesh(merged, mat);
+        // A tile made only of small things (bins, kerbs, benches, signs) is
+        // dropped beyond DETAIL_DIST: unreadable that far out, and those tiles
+        // were most of the city's draw calls.
+        let big = 0;
+        for (const o of list) {
+          const g = o.geometry;
+          if (!g.boundingSphere) g.computeBoundingSphere();
+          const sc = o.matrixWorld.getMaxScaleOnAxis();
+          big = Math.max(big, g.boundingSphere.radius * sc);
+        }
+        if (big < 4) this._detailTiles.push(mesh);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        // Already in world space.
+        mesh.matrixAutoUpdate = false;
+        w.group.add(mesh);
+        batches++;
+        for (const o of list) folded.add(o);
       }
     }
-    return { batches, meshesFolded: removed };
+    // One pass instead of one splice per part. NOT disposed: _block hands
+    // every box the same shared BoxGeometry.
+    const kept = w.group.children.filter((o) => !folded.has(o));
+    for (const o of folded) o.parent = null;
+    w.group.children.length = 0;
+    w.group.children.push(...kept);
+    return { batches, meshesFolded: folded.size };
   }
 
   // ----------------------------------------------------------------- surfaces
@@ -1121,10 +1137,11 @@ export class City {
     w._block(DOOR, floorH - doorTop, T, x, doorTop + 0.2, z + hd - T / 2, mat, { surface: 'stone' });
 
     // Shopfront glazing either side of the door, so it reads as a shop.
-    const glassMat = new THREE.MeshPhysicalMaterial({
+    // Shared by every shop: one material per shop was hundreds of draw calls.
+    const glassMat = this._shopGlass || (this._shopGlass = new THREE.MeshPhysicalMaterial({
       color: 0x9fc4d8, roughness: 0.05, metalness: 0.1,
       transparent: true, opacity: 0.22, clearcoat: 1
-    });
+    }));
     if (side > 1.2) {
       for (const s of [-1, 1]) {
         w._block(side * 0.8, 1.9, 0.08, x + s * (DOOR / 2 + side / 2), 0.9,
@@ -1140,9 +1157,9 @@ export class City {
       w._block(0.6, 0.12, bd * 0.5, x + hw - 0.9, 0.9 + i * 0.85, z - bd * 0.1, inner,
         { surface: 'wood', collide: false });
     }
-    const lamp = new THREE.MeshStandardMaterial({
+    const lamp = this._shopLamp || (this._shopLamp = new THREE.MeshStandardMaterial({
       color: 0x14171c, emissive: 0xffe6b8, emissiveIntensity: 2.2, roughness: 0.4
-    });
+    }));
     w._block(bw * 0.5, 0.12, 0.4, x, floorH - 0.35, z, lamp, { collide: false });
 
     const venue = {
@@ -1655,6 +1672,13 @@ export class City {
   updateGround(cam, player) {
     if (this.parkland) this.parkland.update(cam, player);
     if (this.beachDebris) this.beachDebris.update(cam);
+    if (this._detailTiles) {
+      const p = cam;
+      for (const m of this._detailTiles) {
+        const s = m.geometry.boundingSphere;
+        m.visible = s.center.distanceTo(p) - s.radius < DETAIL_DIST;
+      }
+    }
   }
 
   /** Sand or seabed height beyond the shore; street level inside it. */
@@ -1896,6 +1920,79 @@ export class City {
       for (const g of geos) g.dispose();
     }
   }
+}
+
+const _nm = new THREE.Matrix3();
+/** Beyond this, merged tiles of small street detail are not drawn. */
+const DETAIL_DIST = 260;
+
+/**
+ * Merge meshes into one world-space geometry without cloning them first.
+ * Keeps position, normal and uv (zero-filled where a part has none), plus any
+ * other attribute that every part carries — the facade shader reads those.
+ */
+function bakeWorld(meshes) {
+  let vtx = 0, ni = 0;
+  for (const m of meshes) {
+    const g = m.geometry;
+    vtx += g.attributes.position.count;
+    ni += g.index ? g.index.count : g.attributes.position.count;
+  }
+  const pos = new Float32Array(vtx * 3);
+  const nor = new Float32Array(vtx * 3);
+  const uv = new Float32Array(vtx * 2);
+  const idx = vtx > 65535 ? new Uint32Array(ni) : new Uint16Array(ni);
+  const first = meshes[0].geometry.attributes;
+  const extra = Object.keys(first).filter((n) => n !== 'position' && n !== 'normal' && n !== 'uv' &&
+    meshes.every((m) => m.geometry.attributes[n] && m.geometry.attributes[n].itemSize === first[n].itemSize));
+  const extraArr = extra.map((n) => new Float32Array(vtx * first[n].itemSize));
+
+  let vo = 0, io = 0;
+  for (const m of meshes) {
+    m.updateMatrixWorld(true);
+    const e = m.matrixWorld.elements;
+    _nm.getNormalMatrix(m.matrixWorld);
+    const ne = _nm.elements;
+    const g = m.geometry;
+    const P = g.attributes.position, N = g.attributes.normal, T = g.attributes.uv;
+    const c = P.count;
+    for (let i = 0; i < c; i++) {
+      const x = P.getX(i), y = P.getY(i), z = P.getZ(i);
+      const o = (vo + i) * 3;
+      pos[o] = e[0] * x + e[4] * y + e[8] * z + e[12];
+      pos[o + 1] = e[1] * x + e[5] * y + e[9] * z + e[13];
+      pos[o + 2] = e[2] * x + e[6] * y + e[10] * z + e[14];
+      if (N) {
+        const a = N.getX(i), b = N.getY(i), d = N.getZ(i);
+        let nx = ne[0] * a + ne[3] * b + ne[6] * d;
+        let ny = ne[1] * a + ne[4] * b + ne[7] * d;
+        let nz = ne[2] * a + ne[5] * b + ne[8] * d;
+        const l = Math.hypot(nx, ny, nz) || 1;
+        nor[o] = nx / l; nor[o + 1] = ny / l; nor[o + 2] = nz / l;
+      } else {
+        nor[o + 1] = 1;
+      }
+      if (T) { uv[(vo + i) * 2] = T.getX(i); uv[(vo + i) * 2 + 1] = T.getY(i); }
+    }
+    for (let k = 0; k < extra.length; k++) {
+      const A = g.attributes[extra[k]];
+      const sz = A.itemSize;
+      const out = extraArr[k];
+      for (let i = 0; i < c; i++) for (let j = 0; j < sz; j++) out[(vo + i) * sz + j] = A.getComponent(i, j);
+    }
+    const gi = g.index;
+    if (gi) { const arr = gi.array; for (let i = 0; i < gi.count; i++) idx[io++] = arr[i] + vo; }
+    else for (let i = 0; i < c; i++) idx[io++] = vo + i;
+    vo += c;
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  out.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  extra.forEach((n, k) => out.setAttribute(n, new THREE.BufferAttribute(extraArr[k], first[n].itemSize)));
+  out.setIndex(new THREE.BufferAttribute(idx, 1));
+  out.computeBoundingSphere();
+  return out;
 }
 
 /**

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { chunkInstanced, cullByDistance } from './Chunk.js';
 
 /**
  * GroundCover — the forest floor.
@@ -27,6 +28,17 @@ export class GroundCover {
     this._time = 0;
     // Rectangles where nothing should grow: [x, z, halfW, halfD].
     this.exclusions = [];
+    // [group, drawDistance] per layer, culled each frame.
+    this._layers = [];
+  }
+
+  /** Tile a finished layer so off-screen and distant parts are skipped. */
+  _add(mesh, far) {
+    const g = chunkInstanced(mesh, 24, 1.5);
+    mesh.geometry.dispose();
+    this.group.add(g);
+    this._layers.push([g, far]);
+    return g;
   }
 
   exclude(x, z, halfW, halfD) {
@@ -41,16 +53,18 @@ export class GroundCover {
   }
 
   /** Attach the shared wind bend to a material's vertex stage. */
-  _windify(mat, strength = 1) {
+  _windify(mat, strength = 1, fadeFar = 0) {
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.uTime = { value: 0 };
       shader.uniforms.uStrength = { value: strength };
+      shader.uniforms.uFadeFar = { value: fadeFar };
       this._shaders.push(shader);
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', `
           #include <common>
           uniform float uTime;
           uniform float uStrength;
+          uniform float uFadeFar;
         `)
         .replace('#include <begin_vertex>', `
           #include <begin_vertex>
@@ -62,6 +76,11 @@ export class GroundCover {
           float sway = gust * 0.14 * uStrength * bend;
           transformed.x += sway;
           transformed.z += sway * 0.6;
+          // Sink into the ground toward the draw distance instead of popping.
+          if (uFadeFar > 0.0) {
+            float fd = distance(wp.xz, cameraPosition.xz);
+            transformed *= smoothstep(uFadeFar, uFadeFar * 0.7, fd);
+          }
         `);
     };
   }
@@ -91,7 +110,12 @@ export class GroundCover {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(blades, 3));
     g.setIndex(idx);
-    g.computeVertexNormals();
+    // Straight-up normals. Computed ones point sideways, and on a double-sided
+    // blade the back face flips them away from the sun: half the field read
+    // as black specks. Grass is lit from above far more than through a blade.
+    const nrm = new Float32Array(blades.length);
+    for (let i = 1; i < nrm.length; i += 3) nrm[i] = 1;
+    g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
     return g;
   }
 
@@ -122,7 +146,10 @@ export class GroundCover {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
     g.setIndex(idx);
-    g.computeVertexNormals();
+    // Up-facing normals, for the same reason as the grass.
+    const nrm = new Float32Array(pts.length);
+    for (let i = 1; i < nrm.length; i += 3) nrm[i] = 1;
+    g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
     return g;
   }
 
@@ -150,13 +177,17 @@ export class GroundCover {
   }
 
   build(radius = 290) {
+    // No vertexColors on any of these materials. None of the geometries has a
+    // colour attribute, and WebGL feeds a missing one as black — every blade,
+    // fern, bush and mushroom on the forest floor rendered black. The tint
+    // comes from instanceColor, which three.js applies on its own.
     const counts = {};
     const color = new THREE.Color();
 
     // ---- Grass: the dense base layer -------------------------------------
     {
-      const mat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide, vertexColors: true });
-      this._windify(mat, 1.0);
+      const mat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
+      this._windify(mat, 1.0, 62);
       const mesh = new THREE.InstancedMesh(this._grassGeometry(), mat, 60000);
       mesh.frustumCulled = false;
       mesh.castShadow = false;
@@ -169,17 +200,16 @@ export class GroundCover {
         _scl.set(s, s * (0.8 + Math.random() * 0.6), s);
         _m4.compose(_pos, _q, _scl);
         mesh.setMatrixAt(i, _m4);
-        color.setHSL(0.24 + (Math.random() - 0.5) * 0.06, 0.4 + Math.random() * 0.25, 0.2 + Math.random() * 0.18);
+        color.setHSL(0.25 + (Math.random() - 0.5) * 0.06, 0.38 + Math.random() * 0.2, 0.13 + Math.random() * 0.12);
         mesh.setColorAt(i, color);
       });
-      this.group.add(mesh);
-      this.grass = mesh;
+      this.grass = this._add(mesh, 62);
     }
 
     // ---- Ferns: mid-height undergrowth ------------------------------------
     {
-      const mat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide, vertexColors: true });
-      this._windify(mat, 0.55);
+      const mat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
+      this._windify(mat, 0.55, 95);
       const mesh = new THREE.InstancedMesh(this._fernGeometry(), mat, 4200);
       mesh.frustumCulled = false;
       mesh.castShadow = true;
@@ -195,13 +225,12 @@ export class GroundCover {
         color.setHSL(0.27 + (Math.random() - 0.5) * 0.05, 0.42, 0.17 + Math.random() * 0.14);
         mesh.setColorAt(i, color);
       });
-      this.group.add(mesh);
-      this.ferns = mesh;
+      this.ferns = this._add(mesh, 95);
     }
 
     // ---- Bushes: rounded shrub clumps ---------------------------------------
     {
-      const mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+      const mat = new THREE.MeshLambertMaterial({ flatShading: true });
       this._windify(mat, 0.3);
       const geo = new THREE.IcosahedronGeometry(0.55, 1);
       const mesh = new THREE.InstancedMesh(geo, mat, 1400);
@@ -219,13 +248,12 @@ export class GroundCover {
         color.setHSL(0.26 + (Math.random() - 0.5) * 0.05, 0.38, 0.14 + Math.random() * 0.1);
         mesh.setColorAt(i, color);
       });
-      this.group.add(mesh);
-      this.bushes = mesh;
+      this.bushes = this._add(mesh, 150);
     }
 
     // ---- Fallen branches ----------------------------------------------------
     {
-      const mat = new THREE.MeshLambertMaterial({ color: 0x4a3826, vertexColors: true });
+      const mat = new THREE.MeshLambertMaterial();
       const geo = new THREE.CylinderGeometry(0.045, 0.075, 1.5, 5);
       const mesh = new THREE.InstancedMesh(geo, mat, 900);
       mesh.frustumCulled = false;
@@ -243,13 +271,12 @@ export class GroundCover {
         color.setHSL(0.08, 0.3, l);
         mesh.setColorAt(i, color);
       });
-      this.group.add(mesh);
-      this.branches = mesh;
+      this.branches = this._add(mesh, 80);
     }
 
     // ---- Mushrooms ------------------------------------------------------------
     {
-      const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+      const mat = new THREE.MeshLambertMaterial();
       const geo = new THREE.ConeGeometry(0.09, 0.11, 7);
       const mesh = new THREE.InstancedMesh(geo, mat, 700);
       mesh.frustumCulled = false;
@@ -267,13 +294,12 @@ export class GroundCover {
         else color.setHSL(0.05 + Math.random() * 0.04, 0.35, 0.25 + Math.random() * 0.15);
         mesh.setColorAt(i, color);
       });
-      this.group.add(mesh);
-      this.mushrooms = mesh;
+      this.mushrooms = this._add(mesh, 45);
     }
 
     // ---- Pebbles ---------------------------------------------------------------
     {
-      const mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+      const mat = new THREE.MeshLambertMaterial({ flatShading: true });
       const geo = new THREE.DodecahedronGeometry(0.1, 0);
       const mesh = new THREE.InstancedMesh(geo, mat, 2200);
       mesh.frustumCulled = false;
@@ -290,8 +316,7 @@ export class GroundCover {
         color.setRGB(l, l * 0.98, l * 0.92);
         mesh.setColorAt(i, color);
       });
-      this.group.add(mesh);
-      this.pebbles = mesh;
+      this.pebbles = this._add(mesh, 45);
     }
 
     this.counts = counts;
@@ -302,5 +327,7 @@ export class GroundCover {
   update(dt) {
     this._time += dt;
     for (const s of this._shaders) s.uniforms.uTime.value = this._time;
+    const cam = this.world.game.camera.position;
+    for (const [g, far] of this._layers) cullByDistance(g, cam, far);
   }
 }

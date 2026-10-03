@@ -31,6 +31,32 @@ import { Minimap } from '../ui/Minimap.js';
 import { Loading } from '../ui/Loading.js';
 import { MAPS } from '../world/maps.js';
 
+/**
+ * A first-run quality tier from the graphics chip. Starting everyone on HIGH
+ * meant a laptop or phone spent its first minutes as a slideshow before the
+ * adaptive tier caught up — and world detail is baked when a map is built, so
+ * stepping down mid-game could not take back the heaviest part anyway.
+ * Only used when the player has never saved a quality setting.
+ */
+function guessQuality() {
+  try {
+    const mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+      (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+    if (mobile) return 'low';
+    const gl = document.createElement('canvas').getContext('webgl');
+    const ext = gl && gl.getExtension('WEBGL_debug_renderer_info');
+    const gpu = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : '';
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
+    if (/SwiftShader|llvmpipe|Software|Basic Render/i.test(gpu)) return 'potato';
+    if (/Intel|UHD|Iris|HD Graphics|Mali|Adreno|PowerVR|Radeon\(TM\) Graphics|Vega \d+ Graphics/i.test(gpu)) {
+      return (navigator.hardwareConcurrency || 4) <= 4 ? 'low' : 'medium';
+    }
+    return 'high';
+  } catch {
+    return 'medium';
+  }
+}
+
 /** Map definitions by id, for the loading screen's chapter line. */
 const ALL_MAPS_BY_ID = Object.fromEntries(MAPS.map((m) => [m.id, m]));
 
@@ -73,7 +99,7 @@ export class Game {
       // the ground beside the wreck.
       crashSeen: false,
       renderScale: 1, shadows: true, bloomOn: true, minimap: true,
-      quality: 'high', autoQuality: true,
+      quality: guessQuality(), autoQuality: true,
       // GTAZ only. 'fun' lets the dials below do anything; 'real' ignores
       // them entirely and plays the game at its designed numbers.
       gtazRules: 'fun', funSpeed: 7, funHealth: 7, funPolice: false,
@@ -435,7 +461,7 @@ export class Game {
     if (rebuild) {
       // The GTAZ city is by far the largest single build in the game.
       Loading.step(this.isGTAZ ? 'Building the city' : 'Building the world',
-        0.06, this.isGTAZ ? 0.55 : 0.8, this.isGTAZ ? 7000 : 1600);
+        0.06, this.isGTAZ ? 0.55 : 0.8, this.isGTAZ ? 14000 : 2500);
       await Loading.frame();
       this.world.dispose();
       this.world = new World(this, this.settings.map);

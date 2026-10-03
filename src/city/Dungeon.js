@@ -507,15 +507,14 @@ export class Cave {
   /** A wall torch. Kept as a handle so it can flicker. */
   _torch(x, z, rand, bracketMat) {
     const w = this.world;
-    const flameMat = new THREE.MeshStandardMaterial({
-      color: 0x2a1408, emissive: 0xff9a3c, emissiveIntensity: 2.6, roughness: 0.5
-    });
+    const fl = this._flame(rand);
+    const flameMat = fl.mat;
     w._block(0.16, 0.3, 0.16, x, DEPTH + 2.0, z, bracketMat, { collide: false });
     w._block(0.34, 0.5, 0.34, x, DEPTH + 2.3, z, bracketMat, { collide: false });
     const flame = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.95, 7), flameMat);
     flame.position.set(x, DEPTH + 3.3, z);
     w.group.add(flame);
-    this.torches.push({ mesh: flame, mat: flameMat, phase: rand() * 10 });
+    this.torches.push({ mesh: flame, mat: flameMat, phase: fl.phase, shared: true });
   }
 
   build(rand) {
@@ -661,19 +660,42 @@ export class Cave {
   /** Same torch, but at street level rather than hall level. */
   _torchSurface(x, z, rand, bracketMat) {
     const w = this.world;
-    const flameMat = new THREE.MeshStandardMaterial({
-      color: 0x2a1408, emissive: 0xff9a3c, emissiveIntensity: 2.6, roughness: 0.5
-    });
+    const fl = this._flame(rand);
+    const flameMat = fl.mat;
     w._block(0.34, 0.5, 0.34, x, 3.0, z, bracketMat, { collide: false });
     const flame = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.95, 7), flameMat);
     flame.position.set(x, 4.0, z);
     w.group.add(flame);
-    this.torches.push({ mesh: flame, mat: flameMat, phase: rand() * 10 });
+    this.torches.push({ mesh: flame, mat: flameMat, phase: fl.phase, shared: true });
+  }
+
+  /**
+   * One of a handful of shared flame materials, each flickering on its own
+   * phase. A material per torch made every flame its own draw call — a few
+   * hundred of them — and stopped the city merging them.
+   */
+  _flame(rand) {
+    if (!this._flames) {
+      this._flames = [];
+      for (let i = 0; i < 5; i++) {
+        const mat = new THREE.MeshStandardMaterial({
+          color: 0x2a1408, emissive: 0xff9a3c, emissiveIntensity: 2.6, roughness: 0.5
+        });
+        this._flames.push({ mat, phase: i * 2.17 });
+      }
+    }
+    return this._flames[Math.floor(rand() * this._flames.length)];
   }
 
   /** Torch flicker. Cheap, and it does more for a hall than any texture. */
   update(dt, t) {
+    for (const f of this._flames || []) {
+      f.mat.emissiveIntensity = 2.0 + Math.sin(t * 9 + f.phase) * 0.5
+        + Math.sin(t * 21 + f.phase * 2) * 0.25;
+    }
+    // Torches placed by the Undercroft still carry their own material.
     for (const tr of this.torches) {
+      if (tr.shared || tr.phase === undefined) continue;
       tr.mat.emissiveIntensity = 2.0 + Math.sin(t * 9 + tr.phase) * 0.5
         + Math.sin(t * 21 + tr.phase * 2) * 0.25;
     }

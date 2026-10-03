@@ -206,8 +206,10 @@ export class Effects {
   _initFlashes(max) {
     this.flashes = [];
     for (let i = 0; i < max; i++) {
+      // Always "on", dark when idle. Toggling .visible changes the scene's
+      // light count, and three.js recompiles every material in the scene
+      // when that count changes — a hitch on every single gunshot.
       const light = new THREE.PointLight(0xffffff, 0, 9, 2);
-      light.visible = false;
       this.scene.add(light);
       this.flashes.push({ light, life: 0 });
     }
@@ -218,7 +220,6 @@ export class Effects {
   flash(pos, color = 0xffc873, intensity = 26, duration = 0.05) {
     const f = this.flashes[this._fCursor];
     this._fCursor = (this._fCursor + 1) % this.flashes.length;
-    f.light.visible = true;
     f.light.color.set(color);
     f.light.intensity = intensity;
     f.light.position.copy(pos);
@@ -229,10 +230,9 @@ export class Effects {
 
   _updateFlashes(dt) {
     for (const f of this.flashes) {
-      if (!f.light.visible) continue;
+      if (f.life <= 0) continue;
       f.life -= dt;
       f.light.intensity = Math.max(0, (f.life / f.dur)) * f.max;
-      if (f.life <= 0) f.light.visible = false;
     }
   }
 
@@ -436,7 +436,7 @@ export class Effects {
     for (let i = 0; i < this.pMax; i++) { this.pLife[i] = 0; this.pPos[i * 3 + 1] = -1000; }
     for (const t of this.tracers) t.mesh.visible = false;
     for (const d of this.decals) d.mesh.visible = false;
-    for (const f of this.flashes) f.light.visible = false;
+    for (const f of this.flashes) { f.life = 0; f.light.intensity = 0; }
     for (const c of this.casings) c.mesh.visible = false;
     if (this._bloodPool) for (const b of this._bloodPool) b.mesh.visible = false;
   }

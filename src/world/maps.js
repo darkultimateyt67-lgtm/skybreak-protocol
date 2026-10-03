@@ -512,6 +512,9 @@ const ALL_MAPS = [
     chapter: 'THE GARDEN',
     blurb: 'A forest inside a space station, and every soul in it wants you dead. Except two. Maybe.',
     groundCover: 290, // undergrowth radius
+    // Bigger sprigs, same count. The leaf budget spread over ~9,000 twig tips
+    // came to two sprigs a twig and every tree in the grove looked dead.
+    foliage: { scale: 2.3 },
     atmosphere: { rays: 24, pollen: 3000, birds: 28, radius: 200 },
     intro: [
       { t: 2.0, who: 'DANIEL', text: 'Vector. VECTOR. Hey — you still got all your parts? Count them. I counted mine twice.' },
