@@ -10,8 +10,123 @@
   <title>SKYBREAK PROTOCOL</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#9650;</text></svg>" />
   <link rel="stylesheet" href="/src/style.css" />
+  <!--
+    Loading screen styles live HERE, inline, rather than in style.css: this is
+    the first thing anyone sees, and it has to paint before the 1.4 MB game
+    bundle has even finished downloading. Every animation below moves only
+    `transform` or `opacity`, which the browser runs on its compositor thread —
+    so the grid keeps rolling and the bar keeps shining even while the main
+    thread is locked up building a city.
+  -->
+  <style>
+    #loading {
+      position: fixed; inset: 0; z-index: 9999; overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+      background: radial-gradient(ellipse at 50% 38%, #0d2233 0%, #070d15 55%, #03050a 100%);
+      color: #d7f4fb; font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      opacity: 1; transition: opacity .6s ease; user-select: none; -webkit-user-select: none;
+    }
+    #loading.gone { opacity: 0; pointer-events: none; }
+    #loading.hidden { display: none; }
+    /* A floor grid rolling toward you, under a horizon glow. */
+    .ld-floor { position: absolute; left: -50%; right: -50%; bottom: -10%; height: 70%;
+      perspective: 420px; perspective-origin: 50% 0%; pointer-events: none; }
+    .ld-plane { position: absolute; inset: 0; transform-origin: 50% 0%;
+      transform: rotateX(72deg); overflow: hidden; }
+    .ld-lines { position: absolute; left: 0; right: 0; top: -100%; height: 300%;
+      background-image:
+        linear-gradient(rgba(55,230,255,.28) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(55,230,255,.22) 1px, transparent 1px);
+      background-size: 64px 64px; animation: ld-roll 2.2s linear infinite; }
+    @keyframes ld-roll { to { transform: translateY(64px); } }
+    .ld-horizon { position: absolute; left: 0; right: 0; top: 52%; height: 2px;
+      background: linear-gradient(90deg, transparent, rgba(55,230,255,.9), transparent);
+      box-shadow: 0 0 40px 10px rgba(55,230,255,.25); }
+    .ld-fadefloor { position: absolute; left: 0; right: 0; top: 52%; bottom: 0;
+      background: linear-gradient(#070d15 0%, transparent 35%); pointer-events: none; }
+    /* Drifting specks of light. */
+    .ld-dust { position: absolute; inset: -20% 0 0 0; pointer-events: none;
+      background-image:
+        radial-gradient(1.5px 1.5px at 12% 22%, rgba(255,255,255,.7), transparent),
+        radial-gradient(1px 1px at 33% 64%, rgba(55,230,255,.8), transparent),
+        radial-gradient(1.5px 1.5px at 58% 18%, rgba(255,255,255,.55), transparent),
+        radial-gradient(1px 1px at 76% 44%, rgba(255,155,61,.7), transparent),
+        radial-gradient(1.5px 1.5px at 88% 12%, rgba(255,255,255,.6), transparent),
+        radial-gradient(1px 1px at 46% 36%, rgba(55,230,255,.6), transparent),
+        radial-gradient(1px 1px at 22% 48%, rgba(255,255,255,.5), transparent),
+        radial-gradient(1.5px 1.5px at 68% 70%, rgba(55,230,255,.5), transparent);
+      background-size: 100% 60%; animation: ld-drift 14s linear infinite; }
+    @keyframes ld-drift { to { transform: translateY(20%); } }
+    .ld-center { position: relative; width: min(620px, 88vw); text-align: center; margin-top: -6vh; }
+    .ld-ring { position: absolute; left: 50%; top: 50px; width: 260px; height: 260px;
+      margin: -130px 0 0 -130px; border-radius: 50%; pointer-events: none;
+      border: 1px solid rgba(55,230,255,.18); border-top-color: rgba(55,230,255,.85);
+      border-right-color: rgba(55,230,255,.4); animation: ld-spin 3.2s linear infinite; }
+    .ld-ring.b { width: 320px; height: 320px; margin: -160px 0 0 -160px;
+      border-top-color: rgba(255,155,61,.6); border-right-color: transparent;
+      animation-duration: 5.6s; animation-direction: reverse; }
+    @keyframes ld-spin { to { transform: rotate(360deg); } }
+    .ld-logo { position: relative; line-height: .95; }
+    .ld-logo b { display: block; font-size: clamp(34px, 7.4vw, 66px); font-weight: 900;
+      letter-spacing: .14em; color: #fff; text-shadow: 0 0 28px rgba(55,230,255,.55); }
+    .ld-logo b + b { color: #37e6ff; text-shadow: 0 0 34px rgba(55,230,255,.9); }
+    .ld-logo i { position: absolute; inset: -10% -6%; border-radius: 40%;
+      background: radial-gradient(closest-side, rgba(55,230,255,.20), transparent);
+      animation: ld-breathe 2.6s ease-in-out infinite; }
+    @keyframes ld-breathe { 50% { opacity: .35; } }
+    .ld-mode { margin-top: 26px; font-size: clamp(13px, 2.4vw, 17px); font-weight: 700;
+      letter-spacing: .32em; color: #ff9b3d; text-transform: uppercase; min-height: 1.3em; }
+    .ld-sub { margin-top: 6px; font-size: clamp(12px, 2vw, 14px); letter-spacing: .06em;
+      color: rgba(215,244,251,.72); min-height: 1.3em; }
+    .ld-bar { position: relative; height: 6px; margin: 22px auto 0; width: 100%;
+      background: rgba(55,230,255,.10); border: 1px solid rgba(55,230,255,.28); overflow: hidden; }
+    .ld-fill { position: absolute; inset: 0; transform-origin: 0 50%; transform: scaleX(.03);
+      background: linear-gradient(90deg, #1b8fa8, #37e6ff); box-shadow: 0 0 14px rgba(55,230,255,.7); }
+    .ld-shine { position: absolute; top: 0; bottom: 0; width: 30%; left: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent);
+      animation: ld-shine 1.4s ease-in-out infinite; }
+    @keyframes ld-shine { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+    .ld-row { display: flex; justify-content: space-between; margin-top: 9px;
+      font-size: 12px; letter-spacing: .14em; color: rgba(215,244,251,.6); text-transform: uppercase; }
+    .ld-row b { color: #37e6ff; font-weight: 700; }
+    .ld-tip { margin: 34px auto 0; max-width: 520px; padding: 12px 16px; text-align: left;
+      border-left: 3px solid #ff9b3d; background: rgba(8,14,20,.55);
+      font-size: clamp(12px, 2.1vw, 14px); line-height: 1.5; color: rgba(215,244,251,.88);
+      min-height: 3.2em; transition: opacity .35s ease; }
+    .ld-tip small { display: block; font-size: 10px; letter-spacing: .28em; color: #ff9b3d; margin-bottom: 3px; }
+    .ld-go { display: none; margin: 30px auto 0; padding: 14px 34px; font: inherit;
+      font-size: clamp(14px, 2.6vw, 18px); font-weight: 800; letter-spacing: .3em; color: #05070a;
+      background: #37e6ff; border: 0; cursor: pointer; clip-path: polygon(6% 0, 100% 0, 94% 100%, 0 100%);
+      box-shadow: 0 0 30px rgba(55,230,255,.6); animation: ld-pulse 1.3s ease-in-out infinite; }
+    #loading.ready .ld-go { display: inline-block; }
+    #loading.ready .ld-bar, #loading.ready .ld-row { opacity: .45; }
+    #loading.ready .ld-shine { display: none; }
+    @keyframes ld-pulse { 50% { transform: scale(1.05); } }
+    @media (prefers-reduced-motion: reduce) {
+      .ld-lines, .ld-dust, .ld-ring, .ld-shine, .ld-logo i, .ld-go { animation: none; }
+    }
+  </style>
 </head>
 <body>
+  <!-- Loading screen. Visible from the very first paint; the game hides it
+       when the menu is ready, and brings it back on Deploy. See ui/Loading.js. -->
+  <div id="loading">
+    <div class="ld-dust"></div>
+    <div class="ld-floor"><div class="ld-plane"><div class="ld-lines"></div></div></div>
+    <div class="ld-fadefloor"></div>
+    <div class="ld-horizon"></div>
+    <div class="ld-center">
+      <div class="ld-ring"></div><div class="ld-ring b"></div>
+      <div class="ld-logo"><i></i><b>SKYBREAK</b><b>PROTOCOL</b></div>
+      <div class="ld-mode" id="ld-mode">Starting up</div>
+      <div class="ld-sub" id="ld-sub">An original game, built entirely in code</div>
+      <div class="ld-bar"><div class="ld-fill" id="ld-fill"></div><div class="ld-shine"></div></div>
+      <div class="ld-row"><span id="ld-step">Downloading the game</span><b id="ld-pct">3%</b></div>
+      <button class="ld-go" id="ld-go" type="button">CLICK TO PLAY</button>
+      <div class="ld-tip" id="ld-tip"><small>DID YOU KNOW</small>Every building, car, person and sound in this game is generated in code. There is not a single image or model file in it.</div>
+    </div>
+  </div>
+
   <div id="game"></div>
   <div id="fade"></div>
 

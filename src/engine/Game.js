@@ -28,6 +28,11 @@ import { Voice } from '../audio/Voice.js';
 import { Music } from '../audio/Music.js';
 import { HUD } from '../ui/HUD.js';
 import { Minimap } from '../ui/Minimap.js';
+import { Loading } from '../ui/Loading.js';
+import { MAPS } from '../world/maps.js';
+
+/** Map definitions by id, for the loading screen's chapter line. */
+const ALL_MAPS_BY_ID = Object.fromEntries(MAPS.map((m) => [m.id, m]));
 
 export const State = {
   MENU: 'menu',
@@ -262,6 +267,13 @@ export class Game {
     return resolveRules(this);
   }
 
+  /** The second line on the loading screen: the chapter, in the campaign. */
+  _loadingLine() {
+    if (this.settings.mode !== 'career') return null;
+    const def = ALL_MAPS_BY_ID[this.settings.map];
+    return def ? `${def.chapter}  ·  ${def.name}` : null;
+  }
+
   /** Active difficulty preset (multipliers used by the enemy director). */
   get difficulty() {
     return DIFFICULTIES[this.settings.diff] || DIFFICULTIES.veteran;
@@ -408,7 +420,23 @@ export class Game {
     // dim the effects while still carrying a full world's worth of geometry —
     // which is the part that was actually costing the frame.
     const wantDetail = this.photoreal?.q?.content ?? 1;
-    if (this.world.mapId !== this.settings.map || this.world.detail !== wantDetail) {
+    const rebuild = this.world.mapId !== this.settings.map || this.world.detail !== wantDetail;
+
+    // --- Loading screen ------------------------------------------------------
+    // Anything that has to build a world, or bring the city to life, puts the
+    // loading screen up FIRST and lets it paint before the heavy work starts.
+    // Without this the menu simply froze for the whole build.
+    const heavy = rebuild || this.isGTAZ;
+    if (heavy) {
+      this._loading = true;
+      Loading.show(this.settings.mode, this._loadingLine());
+      await Loading.frame();
+    }
+    if (rebuild) {
+      // The GTAZ city is by far the largest single build in the game.
+      Loading.step(this.isGTAZ ? 'Building the city' : 'Building the world',
+        0.06, this.isGTAZ ? 0.55 : 0.8, this.isGTAZ ? 7000 : 1600);
+      await Loading.frame();
       this.world.dispose();
       this.world = new World(this, this.settings.map);
       // The new world has a new sun — reapply shadow quality to it.
@@ -448,6 +476,27 @@ export class Game {
     }
 
     this._debugNoLock = !useLock;
+
+    // GTAZ: bring the city to life BEFORE asking for the click, so the whole
+    // wait sits behind the loading screen rather than after it.
+    if (this.isGTAZ) {
+      // Any drop-in .glb models are fetched before the first car is built, so
+      // a downloaded body is in the cache when it's needed. Nothing here can
+      // fail the launch — missing files just mean the generated shapes.
+      Loading.step('Checking for custom models', 0.56, 0.58, 300);
+      await this.freeRoam.preloadModels();
+      await this.freeRoam.start(Loading);
+    }
+
+    if (heavy) {
+      // Ends on a click: that fresh click is what lets the game capture the
+      // mouse. The build always takes longer than the few seconds a browser
+      // allows after the DEPLOY click, which is why the old flow kept falling
+      // back to "click to enable precise aim". Touch screens go straight in.
+      await Loading.ready(this.isTouch || !useLock);
+      this._loading = false;
+      Loading.hide();
+    }
     if (useLock) await this._acquireLook();
 
     // GTAZ: hand the city over to the free-roam manager and get out of the way.
@@ -456,11 +505,6 @@ export class Game {
       this.touch.setVisible(true);
       this.hud.showHUD(true);
       this.thirdPerson.setEnabled(false);
-      // Any drop-in .glb models are fetched before the first car is built, so
-      // a downloaded body is in the cache when it's needed. Nothing here can
-      // fail the launch — missing files just mean the generated shapes.
-      await this.freeRoam.preloadModels();
-      this.freeRoam.start();
       return;
     }
 
@@ -690,6 +734,9 @@ export class Game {
   // ----------------------------------------------------------------------- loop
 
   _loop() {
+    // Behind the loading screen nothing needs simulating or drawing, and a
+    // half-built city is the last thing that should be stepped.
+    if (this._loading) { this.clock.getDelta(); return; }
     let dt = Math.min(this.clock.getDelta(), 1 / 20);
 
     if (this.state === State.CRASH) {

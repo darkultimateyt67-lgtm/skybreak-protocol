@@ -80,11 +80,23 @@ export class FreeRoam {
     return res;
   }
 
-  /** Called once the GTAZ world has been built. */
-  start() {
+  /**
+   * Called once the GTAZ world has been built.
+   *
+   * Async, with a pause between each stage, so the loading screen can show
+   * what is happening and actually move. `loading` is the loading screen (or
+   * nothing, in which case the stages run back to back as they always did).
+   */
+  async start(loading = null) {
     const g = this.game;
     this.city = g.world.city;
     if (!this.city) return;
+    // One stage at a time: say what it is, let that paint, then do it.
+    const stage = async (label, from, to, ms) => {
+      if (!loading) return;
+      loading.step(label, from, to, ms);
+      await loading.frame();
+    };
     // Out-of-world depth on the surface. The old -8 m was fine over a flat
     // sheet of water; with a seabed at 28 m it would respawn anyone who dived.
     g.player.voidY = -40;
@@ -97,6 +109,7 @@ export class FreeRoam {
     // they scale up hard. Cars are each their own object hierarchy, so they
     // rise more carefully.
     const d = g.world.detail ?? 1;
+    await stage('Filling the streets with traffic and people', 0.6, 0.74, 2200);
     // TRAFFIC DENSITY, RAISED ON THE BACK OF THE VEHICLE LOD.
     //
     // 70 was the right number when every car in the city was 61 meshes
@@ -112,6 +125,7 @@ export class FreeRoam {
     });
     this.traffic.build();
     this.wanted = new Wanted(this);
+    await stage('Setting up physics: props, debris, ragdolls', 0.75, 0.8, 600);
     // Sand that reacts: grains, dust, prints, pits and tyre tracks.
     this.sandFX?.dispose();
     this.sandFX = new SandFX(g, this.city);
@@ -127,6 +141,7 @@ export class FreeRoam {
     this.ragdolls = new RagdollPool(this.rigid);
     this.traffic.ragdolls = this.ragdolls;
     this.dining = new Dining(this);
+    await stage('Opening the Undercity', 0.81, 0.83, 300);
     // Underground complexes and the contracts that send you into them.
     this.dungeons = this.city.dungeons || [];
     // The Undercity's story: inscriptions you read by standing at them, and
@@ -143,7 +158,9 @@ export class FreeRoam {
 
     // Parked cars are the cheaper half of the population — they never move,
     // so they cost nothing but their meshes, and those are LOD'd too.
+    await stage('Parking cars', 0.84, 0.94, 1800);
     this._spawnParked(Math.max(36, Math.round(150 * d)));
+    await stage('Fuelling planes and boats', 0.95, 0.98, 500);
     this._spawnAircraft();
     this._spawnBoats();
     this.active = true;
