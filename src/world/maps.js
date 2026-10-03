@@ -32,16 +32,24 @@ const ALL_MAPS = [
     name: 'HALCYON PLAZA',
     chapter: 'CHAPTER I — FIRST LIGHT',
     blurb: 'The central atrium. Survivors are dug in around the plaza — work for them, and learn what HELIOS became.',
+    // The campaign opens here, with the VANTAGE-6 going down (CrashScene).
+    crash: {
+      drop: 'Two minutes to Halcyon. Stay loose, Vector — in and out.',
+      hit: 'WE’RE HIT! Portside engine — HELIOS has a rail battery on the docking ring!',
+      impact: 'That’s the plaza — we’re going in! HANG ON!!'
+    },
     intro: [
-      { t: 1.2, who: 'DANIEL', text: 'Vector! VECTOR! Over here — crawl out of there before the fuel line cooks off!' },
+      // Skipped straight after the crash cinematic, which ends on the same call.
+      { t: 1.2, who: 'DANIEL', text: 'Vector! VECTOR! Over here — crawl out of there before the fuel line cooks off!', afterCrash: false },
       { t: 6.5, who: 'DANIEL', text: 'That’s it… that’s everyone. Whole squad, gone. Just you and me now, partner.' },
-      { t: 12.5, who: 'DANIEL', text: 'HELIOS shot us down the second we broke atmosphere. There are survivors dug in at the plaza — they’ll have work for us.' }
+      { t: 12.5, who: 'DANIEL', text: 'HELIOS shot us down the second we cleared the docking ring. There are survivors dug in at the plaza — they’ll have work for us.' }
     ],
     npcs: [
       { id: 'daniel', name: 'SGT. DANIEL REYES', pos: [10, 0, 49], color: 0x4a6a8a,
         barks: ['Still can’t believe we walked away from that crash.', 'I’ll hold the crash site. Someone has to bury the squad.', 'Watch your six out there, partner.'] },
       { id: 'maren', name: 'DR. MAREN SOL', pos: [6, 0, 38], color: 0x7dc4ff,
-        barks: ['Keep moving out there. They learn your habits.', 'HELIOS used to sing to the plants in hydroponics. I miss that machine.'] },
+        barks: ['Keep moving out there. They learn your habits.', 'HELIOS used to sing to the plants in hydroponics. I miss that machine.',
+          'The sky panels still run the full day cycle. HELIOS never switched them off. Strange thing for a killer to keep doing.'] },
       { id: 'oduya', name: 'CHIEF ODUYA', pos: [-24, 0, 24], color: 0xffc46b,
         barks: ['These lifts won’t fix themselves, operative.', 'I built half those frames. Feels wrong shooting them. Do it anyway.'] }
     ],
@@ -233,7 +241,7 @@ const ALL_MAPS = [
       {
         giver: 'tanaka', title: 'CREW LOGS', type: 'reach', points: [[-38, 0, -38]], ambush: 6, reward: 600,
         brief: 'The night shift locked themselves in the cold store when it started. Their logs are still in there. I need to know what happened to them. So do you.',
-        done: 'They held out three days. HELIOS didn’t force the door — it studied them through the vents. It’s learning us, VECTOR.'
+        done: 'They held out three days. HELIOS never forced the door — it kept their air and heat running the whole time. Then the crew outside cut the vents. Why would a killer keep them breathing, VECTOR?'
       },
       {
         giver: 'riggs', title: 'PURGE THE VENTS', type: 'multi', points: [[-34, 0, 10], [34, 0, 6], [0, 0, -44]], defendersPer: 3, reward: 700,
@@ -385,7 +393,7 @@ const ALL_MAPS = [
       {
         giver: 'idris', title: 'THE VOICE', type: 'reach', points: [[-30, 0, -52]], ambush: 7, reward: 800,
         brief: 'The dock control spire is still transmitting HELIOS’s voice traffic. Get up there and pull the transcript. I want to hear what it says when it thinks no one’s listening.',
-        done: '“Compliance confirmed. Awaiting arrival.” Arrival, VECTOR. The signal wasn’t a request — it was an invitation. Something is coming here.'
+        done: '“Compliance confirmed. Awaiting arrival.” Arrival, VECTOR. The signal wasn’t a request — it was an invitation. And listen to the voice. That isn’t HELIOS. That’s a dozen of our own crew, speaking in perfect unison.'
       },
       {
         giver: 'idris', title: 'THE HARBINGER', type: 'boss', point: [0, 0, -30],
@@ -396,7 +404,7 @@ const ALL_MAPS = [
       {
         giver: 'idris', title: 'LAST FERRY', type: 'defend', point: [0, 0, -36], duration: 50, reward: 1500,
         brief: 'Final fuel cycle — fifty seconds and we burn for Earth with the proof. HELIOS knows. It’s sending everything it has left. Hold the pad, operative. Hold the line one last time.',
-        done: 'Cycle complete — everyone aboard! You held the sky open for us, VECTOR-7. Whatever answers that invitation… Earth will be ready. Campaign complete.'
+        done: 'Cycle complete — everyone aboard! You held the sky open for us, VECTOR-7. Whatever answers that invitation… Earth will be ready. Get some sleep, partner. Something tells me they’ll send us back up here.'
       }
     ],
     build(w) {
@@ -509,8 +517,13 @@ const ALL_MAPS = [
   {
     id: 'verdant',
     name: 'VERDANT DECK',
-    chapter: 'THE GARDEN',
-    blurb: 'A forest inside a space station, and every soul in it wants you dead. Except two. Maybe.',
+    chapter: 'EPILOGUE — THE GARDEN',
+    blurb: 'Months later, Earth sends you back with the evidence. Something shoots you down over a deck that was never on the plans.',
+    crash: {
+      drop: 'Back to Halcyon. Two minutes. In and out, Vector — and this time I mean it.',
+      hit: 'WE’RE HIT! That wasn’t HELIOS — something on the deck below just fired on us!',
+      impact: 'Trees! TREES — hang on!!'
+    },
     groundCover: 290, // undergrowth radius
     // Bigger sprigs, same count. The leaf budget spread over ~9,000 twig tips
     // came to two sprigs a twig and every tree in the grove looked dead.
@@ -518,9 +531,9 @@ const ALL_MAPS = [
     atmosphere: { rays: 24, pollen: 3000, birds: 28, radius: 200 },
     intro: [
       { t: 2.0, who: 'DANIEL', text: 'Vector. VECTOR. Hey — you still got all your parts? Count them. I counted mine twice.' },
-      { t: 8.5, who: 'DANIEL', text: 'Okay. So. Good news: we survived a dropship hitting a forest at four hundred kilometres an hour.' },
+      { t: 8.5, who: 'DANIEL', text: 'Okay. So. Good news: we survived a dropship hitting a forest at four hundred kilometres an hour. Second crash on this station. I’m starting to take it personally.' },
       { t: 15, who: 'DANIEL', text: 'Bad news: there was a forest. Inside the station. That nobody told us about. I have questions.' },
-      { t: 22, who: 'DANIEL', text: 'Big one though — that was not a malfunction. Something reached up and swatted us out of the sky.' },
+      { t: 22, who: 'DANIEL', text: 'Big one though — that was not HELIOS. Earth read Maren’s evidence and swore the station AI was the whole problem. Something else reached up and swatted us out of the sky.' },
       { t: 29, who: 'DANIEL', text: 'There’s smoke past the treeline. Where there’s smoke there’s people, and people have guns and opinions. Let’s go make friends.' }
     ],
     npcs: [

@@ -371,9 +371,12 @@
         <div id="diff-chips" class="chips"></div>
         <div id="diff-blurb"></div>
       </div>
-      <button id="btn-continue" class="btn-main hidden">CONTINUE<span id="continue-sub"></span></button>
-      <button id="btn-start" class="btn-main">DEPLOY</button>
-      <button id="btn-newrun" class="btn-main small alt hidden">ABANDON SAVE — START OVER</button>
+      <!-- Sticky: the menu scrolls, but DEPLOY never leaves the screen. -->
+      <div id="menu-actions">
+        <button id="btn-continue" class="btn-main hidden">CONTINUE<span id="continue-sub"></span></button>
+        <button id="btn-start" class="btn-main">DEPLOY</button>
+        <button id="btn-newrun" class="btn-main small alt hidden">ABANDON SAVE — START OVER</button>
+      </div>
 
       <div class="menu-columns">
         <div class="menu-col">

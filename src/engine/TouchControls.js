@@ -55,6 +55,12 @@ export class TouchControls {
         <button class="t-btn t-small" data-act="shop">B</button>
         <button class="t-btn t-small" data-act="view">👁</button>
         <button class="t-btn t-small" data-act="pause">❚❚</button>
+      </div>
+      <div id="t-gtaz">
+        <button class="t-btn t-car" data-act="car">CAR</button>
+        <button class="t-btn" data-act="punch">PUNCH</button>
+        <button class="t-btn t-small" data-act="cam">CAM</button>
+        <button class="t-btn t-small" data-act="hood">HOOD</button>
       </div>`;
     document.body.appendChild(root);
     this.root = root;
@@ -79,6 +85,14 @@ export class TouchControls {
     if (!on) this._releaseAll();
   }
 
+  /**
+   * The city adds its own buttons — get in and out of vehicles, punch, switch
+   * the driving camera, lift a bonnet — which mean nothing anywhere else.
+   */
+  setMode(gtaz) {
+    if (this.root) this.root.classList.toggle('gtaz', !!gtaz);
+  }
+
   /** Only visible while actually playing. */
   setVisible(v) {
     if (!this.root) return;
@@ -87,7 +101,7 @@ export class TouchControls {
   }
 
   _releaseAll() {
-    for (const k of ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ControlLeft']) {
+    for (const k of ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ControlLeft', 'Space']) {
       this.input.keys.delete(k);
     }
     this.input.buttons[0] = false;
@@ -203,15 +217,19 @@ export class TouchControls {
     const game = this.game;
 
     // Held actions map to sustained state; tapped actions fire a one-frame edge.
+    // JUMP is held as well as tapped: held Space is the handbrake in a car,
+    // lift in a plane and rising in the water, exactly as on a keyboard.
     const HOLD = {
       fire: () => { input.buttons[0] = true; },
       ads: () => { input.buttons[2] = true; },
-      crouch: () => { input.keys.add('ControlLeft'); }
+      crouch: () => { input.keys.add('ControlLeft'); },
+      jump: () => { input.keys.add('Space'); }
     };
     const RELEASE = {
       fire: () => { input.buttons[0] = false; },
       ads: () => { input.buttons[2] = false; },
-      crouch: () => { input.keys.delete('ControlLeft'); }
+      crouch: () => { input.keys.delete('ControlLeft'); },
+      jump: () => { input.keys.delete('Space'); }
     };
     const TAP = {
       jump: () => input.oncePressed.add('Space'),
@@ -222,7 +240,11 @@ export class TouchControls {
       shop: () => input.oncePressed.add('KeyB'),
       view: () => input.oncePressed.add('KeyT'),
       swap: () => { input.wheel = 1; },
-      pause: () => game.pauseFromTouch()
+      pause: () => game.pauseFromTouch(),
+      car: () => input.oncePressed.add('KeyF'),
+      punch: () => input.oncePressed.add('KeyV'),
+      cam: () => input.oncePressed.add('KeyC'),
+      hood: () => input.oncePressed.add('KeyH')
     };
 
     for (const btn of this.root.querySelectorAll('.t-btn')) {

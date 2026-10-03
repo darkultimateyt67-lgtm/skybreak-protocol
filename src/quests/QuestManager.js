@@ -362,7 +362,7 @@ export class QuestManager {
           prompt = `[E]  ${npc.def.name} — ACCEPT QUEST`;
           if (game.input.pressed('KeyE')) { npc.speak(6); this._accept(); }
         } else {
-          prompt = `[E]  ${npc.def.name}`;
+          prompt = `[E]  TALK TO ${npc.def.name}`;
           if (game.input.pressed('KeyE')) {
             const barks = npc.def.barks || [];
             if (barks.length) game.hud.comms(barks[Math.floor(Math.random() * barks.length)], npc.def.name);

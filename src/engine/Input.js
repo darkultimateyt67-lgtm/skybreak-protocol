@@ -33,6 +33,10 @@ export class Input {
     window.addEventListener('blur', () => this.keys.clear());
 
     window.addEventListener('mousedown', (e) => {
+      // A click that is capturing the mouse (or pressing CLICK TO PLAY) is not
+      // a shot. Only count presses once the pointer is ours, or in the
+      // fallback mode where the browser refused to lock it at all.
+      if (!this.locked && !this.lookFallback) return;
       if (e.button < 3) {
         this.buttons[e.button] = true;
         this.onceButtons[e.button] = true;

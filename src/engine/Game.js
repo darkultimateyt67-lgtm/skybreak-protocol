@@ -92,12 +92,15 @@ export class Game {
   _loadSettings() {
     const defaults = {
       sensitivity: 1.0, adsSens: 0.8, fov: 80, volume: 0.7,
-      map: 'verdant', diff: 'veteran', operator: 'vector', mode: 'career',
+      // New players start at the beginning: Chapter I.
+      map: 'halcyon', diff: 'veteran', operator: 'vector', mode: 'career',
       career: { name: 'VECTOR', color: '#2d4a56', accent: '#37e6ff', primary: 'riptide' },
       bob: true, showFps: true, invertY: false, shake: true, voice: true, subtitles: true, music: true,
       // The dropship goes down once. After that every career run starts on
       // the ground beside the wreck.
-      crashSeen: false,
+      // Chapters whose opening crash has already been played (see maps.js
+      // `crash`). Chapter I and the epilogue each open with one.
+      crashSeenMaps: [],
       renderScale: 1, shadows: true, bloomOn: true, minimap: true,
       quality: guessQuality(), autoQuality: true,
       // GTAZ only. 'fun' lets the dials below do anything; 'real' ignores
@@ -107,6 +110,9 @@ export class Game {
     };
     try {
       const saved = JSON.parse(localStorage.getItem('skybreak_settings') || '{}');
+      // Older saves had one crash and one flag; that crash was the forest's.
+      if (saved.crashSeen && !saved.crashSeenMaps) saved.crashSeenMaps = ['verdant'];
+      delete saved.crashSeen;
       return {
         ...defaults, ...saved,
         crosshair: { ...defaults.crosshair, ...(saved.crosshair || {}) },
@@ -468,6 +474,7 @@ export class Game {
       // The new world has a new sun — reapply shadow quality to it.
       if (this.photoreal) this.photoreal.onWorldBuilt();
     }
+    this.touch.setMode?.(this.isGTAZ);
     this.audio.ensure();
     this.audio.ambientStart();
     this.audio.forestStart();
@@ -554,11 +561,13 @@ export class Game {
 
     // Career opens with the crash — but only the first time you ever play it.
     // Once you've survived it, every later run starts beside the wreck.
+    const seen = this.settings.crashSeenMaps || (this.settings.crashSeenMaps = []);
     const playCrash = this.settings.mode === 'career' &&
       !this._skipCrash &&
-      !this.settings.crashSeen;
+      !!this.world.def.crash &&
+      !seen.includes(this.world.mapId);
     if (playCrash) {
-      this.settings.crashSeen = true;
+      seen.push(this.world.mapId);
       this.saveSettings();
       this.state = State.CRASH;
       this.hud.showHUD(false);
@@ -602,14 +611,15 @@ export class Game {
     fade.style.opacity = '0';
     (this._introTimers || []).forEach(clearTimeout);
     this._introTimers = [
-      setTimeout(() => this.hud.banner(this.world.def.chapter, this.world.def.name), 600),
-      setTimeout(() => this.hud.comms(
-        'On your feet, partner. Whole squad went down with her — just you and me now.', 'DANIEL'
-      ), 2600),
-      setTimeout(() => this.hud.comms(
-        'Survivors are dug in past the treeline. Find the gold markers — they’ll have work for us.', 'DANIEL'
-      ), 9000)
+      setTimeout(() => this.hud.banner(this.world.def.chapter, this.world.def.name), 600)
     ];
+    // The chapter's own opening lines, so each crash leads into its own story.
+    for (const line of this.world.def.intro || []) {
+      if (line.afterCrash === false) continue;
+      this._introTimers.push(setTimeout(() => {
+        if (this.state === State.PLAYING) this.hud.comms(line.text, line.who);
+      }, 1600 + line.t * 1000));
+    }
   }
 
   /** Death is a setback, not a reset: quest progress and gear survive. */
@@ -637,7 +647,7 @@ export class Game {
   toMenu() {
     if (this.crash && this.crash.active) this.crash.dispose();
     // Clear the per-run override; whether the crash plays is decided by the
-    // persisted crashSeen flag, so it stays skipped once you've seen it.
+    // persisted crashSeenMaps, so it stays skipped once you've seen it.
     this._skipCrash = false;
     this.state = State.MENU;
     this.touch.setVisible(false);

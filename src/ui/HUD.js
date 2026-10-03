@@ -440,7 +440,7 @@ export class HUD {
       game.toMenu();
     });
     $('btn-replay-intro').addEventListener('click', (e) => {
-      game.settings.crashSeen = false;
+      game.settings.crashSeenMaps = [];
       game.saveSettings();
       e.target.textContent = 'INTRO WILL REPLAY ON NEXT RUN';
       setTimeout(() => { e.target.textContent = 'REPLAY CRASH INTRO'; }, 2600);

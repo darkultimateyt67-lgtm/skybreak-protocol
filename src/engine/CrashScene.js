@@ -174,13 +174,15 @@ export class CrashScene {
     const beat = (n, at, fn) => {
       if (this._beat < n && t >= at) { this._beat = n; fn(); }
     };
-    beat(1, 0.6, () => game.hud.comms('Two minutes to the drop. Stay loose, Vector — in and out.', 'DANIEL'));
+    // Each chapter that opens with a crash supplies its own calls.
+    const lines = (game.world.def && game.world.def.crash) || {};
+    beat(1, 0.6, () => game.hud.comms(lines.drop || 'Two minutes to the drop. Stay loose, Vector — in and out.', 'DANIEL'));
     beat(2, 3.0, () => {
       // The hit.
       game.audio.explosion();
       game.audio.alarm();
       this._warnLight.material.emissiveIntensity = 3;
-      game.hud.comms('WE’RE HIT! Portside engine — HELIOS has a rail battery on the ridge!', 'DANIEL');
+      game.hud.comms(lines.hit || 'WE’RE HIT! Portside engine — we’re going down!', 'DANIEL');
       for (let i = 0; i < 3; i++) {
         _v.set((Math.random() - 0.5) * 2, 1.2, -3 + Math.random() * 2);
         game.effects.burst(_v, { count: 14, color: 0xffc873, speed: 6, life: 0.6 });
@@ -193,7 +195,7 @@ export class CrashScene {
       this._rampGone = true;
       game.hud.comms('Ramp’s gone! Hold onto something!', 'DANIEL');
     });
-    beat(5, 10.5, () => game.hud.comms('Trees! TREES — hang on!!', 'DANIEL'));
+    beat(5, 10.5, () => game.hud.comms(lines.impact || 'Ground! Hang on!!', 'DANIEL'));
     beat(6, 12.5, () => {
       // Ground impact.
       this._impacted = true;

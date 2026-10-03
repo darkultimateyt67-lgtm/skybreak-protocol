@@ -697,12 +697,24 @@ html, body {
 
 #menu-story {
   max-width: 620px;
-  margin: 18px auto 0;
+  margin: 18px auto 26px;
   font-size: 13px;
   line-height: 1.7;
   letter-spacing: 1px;
-  color: rgba(215, 244, 251, 0.55);
+  color: rgba(215, 244, 251, 0.82);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
 }
+
+/* DEPLOY stays on screen however far the menu is scrolled. */
+#menu-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  padding: 18px 0 14px;
+  margin-top: 8px;
+  background: linear-gradient(rgba(3, 6, 10, 0), rgba(3, 6, 10, 0.92) 45%);
+}
+#menu-actions .btn-main { margin: 6px auto; }
 
 /* Mission / threat selection */
 #mission-block { margin-bottom: 24px; }
@@ -724,7 +736,7 @@ html, body {
   padding: 9px 22px;
   cursor: pointer;
   clip-path: polygon(9px 0, 100% 0, calc(100% - 9px) 100%, 0 100%);
-  transition: box-shadow 0.12s, background 0.12s;
+  transition: box-shadow 0.12s;
 }
 .chip:hover:not(.on) { border-color: var(--cyan); color: var(--cyan); }
 .chip.on {
@@ -891,6 +903,20 @@ html, body {
 .t-btn.t-use { border-color: rgba(255, 210, 74, 0.7); color: #ffd24a; }
 .t-btn.t-small { width: 46px; height: 46px; font-size: 15px; }
 
+/* City-only buttons, above the stick. */
+#t-gtaz {
+  position: absolute;
+  left: 22px; bottom: 192px;
+  width: 150px;
+  display: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+#touch.gtaz #t-gtaz { display: flex; }
+.t-btn.t-car { border-color: rgba(255, 210, 74, 0.7); color: #ffd24a; }
+
 /* Phone layout: shrink the desktop HUD so it doesn't crowd the thumbs. */
 @media (pointer: coarse) {
   #hud-bl { width: 210px; left: 14px; bottom: 190px; }
@@ -908,6 +934,36 @@ html, body {
   #menu-title { font-size: 38px; letter-spacing: 6px; }
   #op-cards .op-card { width: 140px; }
   .btn-main { padding: 16px 54px; }
+}
+
+/* Phone held sideways: the screen is short, so the HUD moves to the top edge
+   and the thumbs keep the bottom corners to themselves. */
+@media (pointer: coarse) and (max-height: 500px) {
+  #hud-bl { top: 26px; bottom: auto; left: 8px; width: 200px; transform: scale(0.72); transform-origin: top left; }
+  #hud-br { top: 6px; bottom: auto; right: 104px; min-width: 0; transform: scale(0.7); transform-origin: top right; }
+  #minimap-wrap { transform: scale(0.52); }
+  #quest-panel { top: 58px; }
+  #comms { bottom: auto; top: 30%; }
+  #t-util {
+    top: auto; bottom: 10px; right: auto; left: 50%;
+    transform: translateX(-50%);
+    flex-direction: row;
+  }
+  #t-gtaz { left: 14px; bottom: 170px; width: auto; flex-wrap: nowrap; }
+  #t-gtaz .t-btn { width: 52px; height: 52px; font-size: 11px; }
+  #t-gtaz .t-btn.t-small { width: 44px; height: 44px; font-size: 10px; }
+  #t-stick { width: 136px; height: 136px; left: 18px; bottom: 18px; }
+}
+
+/* Short screens (phones sideways, small laptops): a compact title and a
+   slimmer DEPLOY bar, so the bar doesn't sit on top of the mode buttons. */
+@media (max-height: 500px) {
+  #menu .menu-inner { padding: 14px 16px; }
+  #menu-title { font-size: 30px; letter-spacing: 6px; }
+  #menu-sub { font-size: 10px; letter-spacing: 4px; }
+  #menu-story { font-size: 11px; line-height: 1.5; margin: 8px auto 14px; }
+  #menu-actions { padding: 10px 0 6px; }
+  #menu-actions .btn-main { padding: 9px 46px; font-size: 16px; letter-spacing: 6px; margin: 3px auto; }
 }
 
 /* Cinematic skip prompt */

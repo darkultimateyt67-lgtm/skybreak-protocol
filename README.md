@@ -37,11 +37,13 @@ Or double-click `PLAY.cmd`.
 
 ## The campaign
 
-Three chapters, each with its own arena, survivors and quest chain:
+Three chapters and an epilogue, each with its own arena, survivors and quest chain:
 
 1. **HALCYON PLAZA** — hold the atrium, recover the black box, power the lifts.
 2. **IRONWORKS** — jam the forge that prints new SENTINEL frames.
 3. **SKYDOCK** — fuel the last ferry and hold the pad for the final burn.
+4. **EPILOGUE — VERDANT DECK** — sent back months later, shot down over a forest
+   nobody knew was aboard, and the truth about HELIOS.
 
 Quests pay **credits**. Spend them at the supply uplink (B) on new weapons
 (SMG, shotgun, marksman rifle), frag and recon charges, repairs, ammo and
