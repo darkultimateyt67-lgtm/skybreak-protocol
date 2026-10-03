@@ -2,7 +2,6 @@ import * as THREE from 'three';
 
 const _m = new THREE.Matrix4();
 const _c = new THREE.Color();
-const _v = new THREE.Vector3();
 
 /**
  * Split one InstancedMesh into a grid of smaller ones.
@@ -10,7 +9,7 @@ const _v = new THREE.Vector3();
  * A single instanced mesh spanning the whole map has one bounding volume, so
  * it is always "on screen" and every instance is drawn every frame — the grass
  * behind you included. Tiles get their own bounds, so three.js skips the ones
- * outside the view, and `cullByDistance` can drop the far ones.
+ * outside the view, and callers can hide far tiles by distance.
  *
  * Base vertex data and the material are shared; only per-instance data is
  * copied. `pad` grows each tile's bounds to cover vertex-shader wind sway.
@@ -66,13 +65,4 @@ export function chunkInstanced(mesh, cell, pad = 1) {
   for (const c of chunks) group.add(c);
   group.userData.chunks = chunks;
   return group;
-}
-
-/** Hide tiles whose nearest edge is further than `maxDist` from `pos`. */
-export function cullByDistance(group, pos, maxDist) {
-  for (const c of group.userData.chunks) {
-    const s = c.boundingSphere;
-    _v.copy(s.center);
-    c.visible = _v.distanceTo(pos) - s.radius < maxDist;
-  }
 }

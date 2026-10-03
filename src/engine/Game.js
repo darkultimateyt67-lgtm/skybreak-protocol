@@ -519,6 +519,9 @@ export class Game {
       // mouse. The build always takes longer than the few seconds a browser
       // allows after the DEPLOY click, which is why the old flow kept falling
       // back to "click to enable precise aim". Touch screens go straight in.
+      Loading.step('Preparing graphics', 0.985, 1, 2500);
+      await Loading.frame();
+      await this.warmShaders();
       await Loading.ready(this.isTouch || !useLock);
       this._loading = false;
       Loading.hide();
@@ -759,6 +762,44 @@ export class Game {
 
   // ----------------------------------------------------------------------- loop
 
+  /**
+   * Compile every shader the scene will need now, behind the loading screen.
+   *
+   * three.js otherwise compiles a material's shader the first time it is
+   * drawn. A single one of this game's shaders can take most of a second on
+   * an ordinary laptop, and longer on an old one, so every new kind of object
+   * coming into view was a freeze in the middle of play. compileAsync covers
+   * everything in the scene, hidden objects included; one real frame then
+   * adds the shadow and post-processing programs.
+   */
+  async warmShaders() {
+    const R = this.renderer;
+    this.scene.updateMatrixWorld();
+    try {
+      if (R.compileAsync) await R.compileAsync(this.scene, this.camera);
+      else R.compile(this.scene, this.camera);
+    } catch {
+      // Warming is an optimisation; anything it misses compiles on first use.
+    }
+    this._render();
+  }
+
+  /**
+   * Draw the frame. Transforms are brought up to date once here, then held
+   * for the whole composer chain: on HIGH the ambient-occlusion pass renders
+   * the scene a second time, and each render otherwise re-walked all 23,000
+   * objects although nothing can move between the two.
+   */
+  _render() {
+    this.scene.updateMatrixWorld();
+    this.scene.matrixWorldAutoUpdate = false;
+    try {
+      this.composer.render();
+    } finally {
+      this.scene.matrixWorldAutoUpdate = true;
+    }
+  }
+
   _loop() {
     // Behind the loading screen nothing needs simulating or drawing, and a
     // half-built city is the last thing that should be stepped.
@@ -777,7 +818,7 @@ export class Game {
         this._afterCrash();
       }
       this.input.endFrame();
-      this.composer.render();
+      this._render();
       return;
     }
 
@@ -804,7 +845,7 @@ export class Game {
       this.footprints.update();
       if (this.settings.minimap) this.minimap.update();
       this.input.endFrame();
-      this.composer.render();
+      this._render();
       this._fpsTick(dt);
       return;
     }
@@ -834,7 +875,7 @@ export class Game {
       this.footprints.update();
       if (this.settings.minimap) this.minimap.update();
       this.input.endFrame();
-      this.composer.render();
+      this._render();
       this._fpsTick(dt);
       return;
     }
@@ -877,7 +918,7 @@ export class Game {
 
     this.input.endFrame();
     this.photoreal.update(dt);
-    this.composer.render();
+    this._render();
     this._fpsTick(dt);
   }
 

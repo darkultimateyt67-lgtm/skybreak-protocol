@@ -539,20 +539,31 @@ export class FreeRoam {
    */
   _updateTorchLights() {
     const g = this.game;
+    const cave = this.inDungeon;
+    // Borrowed from the effects light pool while underground, returned on the
+    // way out. Six lights of its own would have sat in every shader in every
+    // mode — each scene light is lighting code every pixel runs — and adding
+    // them on first use recompiled every shader in the game mid-play.
+    if (!cave) {
+      if (this._torchPool) {
+        for (const l of this._torchPool) g.effects.releaseLight(l);
+        this._torchPool = null;
+      }
+      return;
+    }
     if (!this._torchPool) {
       this._torchPool = [];
       for (let i = 0; i < 6; i++) {
-        const l = new THREE.PointLight(0xff9a3c, 0, 17, 2);
-        g.scene.add(l);
+        const l = g.effects.reserveLight();
+        if (!l) break;
+        l.color.setHex(0xff9a3c);
+        l.distance = 17;
+        l.decay = 2;
+        l.intensity = 0;
         this._torchPool.push(l);
       }
     }
     const pool = this._torchPool;
-    const cave = this.inDungeon;
-    if (!cave) {
-      for (const l of pool) l.intensity = 0;
-      return;
-    }
     const p = g.player.position;
     // Nearest six by insertion into a tiny fixed list — cheaper and far less
     // garbage than sorting two hundred every frame.

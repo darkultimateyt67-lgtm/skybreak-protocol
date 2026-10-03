@@ -1,4 +1,9 @@
 import * as THREE from 'three';
+import { VirtualLight } from './VirtualLight.js';
+
+/** Real lights lent to the nearest VirtualLights at any one time. */
+const VIRTUAL_SLOTS = 4;
+const _vp = new THREE.Vector3();
 
 const _v = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);
@@ -17,7 +22,9 @@ export class Effects {
     this._initCasings(40);
     this._initTracers(28);
     this._initDecals(64);
-    this._initFlashes(6);
+    // Shared: muzzle flashes, blasts, the crash bay lamps and the dungeon
+    // torches all borrow from these. The count never changes at runtime.
+    this._initFlashes(8);
   }
 
   // ------------------------------------------------------------- particles
@@ -216,9 +223,36 @@ export class Effects {
     this._fCursor = 0;
   }
 
+  /**
+   * Lend one of the pool's lights to something that needs a light for a
+   * while (the crash cinematic). Borrowing keeps the scene's light count
+   * fixed; adding a new light would recompile every shader in the scene.
+   */
+  reserveLight() {
+    const f = this.flashes.find((x) => !x.reserved);
+    if (!f) return null;
+    f.reserved = true;
+    f.life = 0;
+    return f.light;
+  }
+
+  releaseLight(light) {
+    const f = this.flashes.find((x) => x.light === light);
+    if (!f) return;
+    f.reserved = false;
+    f.light.intensity = 0;
+    f.light.distance = 9;
+    f.light.decay = 2;
+  }
+
   /** Brief point-light pop (muzzle flashes, deaths, pad launches). */
   flash(pos, color = 0xffc873, intensity = 26, duration = 0.05) {
-    const f = this.flashes[this._fCursor];
+    let f = this.flashes[this._fCursor];
+    for (let i = 0; i < this.flashes.length && f.reserved; i++) {
+      this._fCursor = (this._fCursor + 1) % this.flashes.length;
+      f = this.flashes[this._fCursor];
+    }
+    if (f.reserved) return;
     this._fCursor = (this._fCursor + 1) % this.flashes.length;
     f.light.color.set(color);
     f.light.intensity = intensity;
@@ -230,7 +264,7 @@ export class Effects {
 
   _updateFlashes(dt) {
     for (const f of this.flashes) {
-      if (f.life <= 0) continue;
+      if (f.reserved || f.life <= 0) continue;
       f.life -= dt;
       f.light.intensity = Math.max(0, (f.life / f.dur)) * f.max;
     }
@@ -428,15 +462,53 @@ export class Effects {
     this._updateTracers(dt);
     this._updateDecals(dt);
     this._updateFlashes(dt);
+    this._updateVirtual();
     this._updateCasings(dt);
     this._updateBlood(dt);
+  }
+
+  /** Lend pool lights to the VirtualLights nearest the camera. */
+  _updateVirtual() {
+    const cam = this.game.camera.position;
+    const scene = this.scene;
+    const near = this._vNear || (this._vNear = []);
+    near.length = 0;
+    for (const v of VirtualLight.all) {
+      if (!(v.intensity > 0)) continue;
+      let root = v;
+      let shown = true;
+      while (root.parent) { if (!root.visible) shown = false; root = root.parent; }
+      if (root !== scene || !shown) continue;
+      v.getWorldPosition(_vp);
+      const d = _vp.distanceTo(cam) - v.distance;
+      if (d > 40) continue;
+      near.push({ v, d, x: _vp.x, y: _vp.y, z: _vp.z });
+    }
+    near.sort((a, b) => a.d - b.d);
+    const want = Math.min(VIRTUAL_SLOTS, near.length);
+    const lent = this._vLent || (this._vLent = []);
+    while (lent.length < want) {
+      const l = this.reserveLight();
+      if (!l) break;
+      lent.push(l);
+    }
+    while (lent.length > want) this.releaseLight(lent.pop());
+    for (let i = 0; i < lent.length; i++) {
+      const l = lent[i];
+      const n = near[i];
+      l.color.copy(n.v.color);
+      l.intensity = n.v.intensity;
+      l.distance = n.v.distance;
+      l.decay = n.v.decay;
+      l.position.set(n.x, n.y, n.z);
+    }
   }
 
   clear() {
     for (let i = 0; i < this.pMax; i++) { this.pLife[i] = 0; this.pPos[i * 3 + 1] = -1000; }
     for (const t of this.tracers) t.mesh.visible = false;
     for (const d of this.decals) d.mesh.visible = false;
-    for (const f of this.flashes) { f.life = 0; f.light.intensity = 0; }
+    for (const f of this.flashes) { if (f.reserved) continue; f.life = 0; f.light.intensity = 0; }
     for (const c of this.casings) c.mesh.visible = false;
     if (this._bloodPool) for (const b of this._bloodPool) b.mesh.visible = false;
   }

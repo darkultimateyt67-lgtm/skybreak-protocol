@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { VirtualLight } from '../effects/VirtualLight.js';
 import { WEAPON_DEFS } from '../weapons/WeaponSystem.js';
 
 const _v = new THREE.Vector3();
@@ -152,7 +153,8 @@ class Chest {
       band.position.set(0, 0.36, z);
       g.add(band);
     }
-    const glow = new THREE.PointLight(0xf5a524, 6, 7, 2);
+    // Virtual: only the nearest few chests get a real light (see VirtualLight).
+    const glow = new VirtualLight(0xf5a524, 6, 7, 2);
     glow.position.y = 1.1;
     g.add(glow);
     this.glow = glow;
@@ -192,7 +194,7 @@ export class Loot {
 
   clear() {
     for (const p of this.pickups) if (!p.taken) this.game.scene.remove(p.group);
-    for (const c of this.chests) this.game.scene.remove(c.group);
+    for (const c of this.chests) { this.game.scene.remove(c.group); c.glow?.dispose?.(); }
     this.pickups = [];
     this.chests = [];
   }

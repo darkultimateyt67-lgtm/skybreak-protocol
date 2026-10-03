@@ -375,7 +375,69 @@ export function buildViewmodel(def) {
   muzzle.position.set(0, 0.012, -len * 0.95);
   group.add(muzzle);
 
+  foldRigidParts(group, new Set([mag, charge]));
   return { group, muzzle, mag, charge, handL, gloveMat: glove };
+}
+
+/**
+ * Merge the gun's rigid parts into one mesh per material.
+ *
+ * A viewmodel is ~90 small boxes and cylinders, every one its own draw call,
+ * every frame you have a gun out. Only the magazine and the charging handle
+ * move relative to the gun (the hands are groups and stay as they are), so the
+ * rest is baked in the gun's own space. Materials are kept, so the glove tint
+ * and any glow still work.
+ */
+function foldRigidParts(group, moving) {
+  const byMat = new Map();
+  for (const c of group.children) {
+    if (!c.isMesh || moving.has(c) || !c.visible) continue;
+    const m = c.material;
+    if (!m || Array.isArray(m) || m.transparent) continue;
+    if (!byMat.has(m)) byMat.set(m, []);
+    byMat.get(m).push(c);
+  }
+  for (const [mat, parts] of byMat) {
+    if (parts.length < 2) continue;
+    let nv = 0, ni = 0;
+    for (const p of parts) {
+      const g = p.geometry;
+      nv += g.attributes.position.count;
+      ni += g.index ? g.index.count : g.attributes.position.count;
+    }
+    const pos = new Float32Array(nv * 3), nor = new Float32Array(nv * 3), uv = new Float32Array(nv * 2);
+    const idx = new Uint32Array(ni);
+    const v = new THREE.Vector3();
+    const nm = new THREE.Matrix3();
+    let vo = 0, io = 0;
+    for (const p of parts) {
+      p.updateMatrix();
+      nm.getNormalMatrix(p.matrix);
+      const g = p.geometry;
+      const P = g.attributes.position, N = g.attributes.normal, T = g.attributes.uv;
+      for (let i = 0; i < P.count; i++) {
+        v.fromBufferAttribute(P, i).applyMatrix4(p.matrix);
+        pos[(vo + i) * 3] = v.x; pos[(vo + i) * 3 + 1] = v.y; pos[(vo + i) * 3 + 2] = v.z;
+        if (N) {
+          v.fromBufferAttribute(N, i).applyMatrix3(nm).normalize();
+          nor[(vo + i) * 3] = v.x; nor[(vo + i) * 3 + 1] = v.y; nor[(vo + i) * 3 + 2] = v.z;
+        }
+        if (T) { uv[(vo + i) * 2] = T.getX(i); uv[(vo + i) * 2 + 1] = T.getY(i); }
+      }
+      if (g.index) for (let i = 0; i < g.index.count; i++) idx[io++] = g.index.getX(i) + vo;
+      else for (let i = 0; i < P.count; i++) idx[io++] = vo + i;
+      vo += P.count;
+      group.remove(p);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    geo.setIndex(new THREE.BufferAttribute(idx, 1));
+    const merged = new THREE.Mesh(geo, mat);
+    merged.frustumCulled = false;
+    group.add(merged);
+  }
 }
 
 /** Runtime state for one carried weapon. */

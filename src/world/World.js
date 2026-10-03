@@ -710,6 +710,7 @@ export class World {
     );
     ring.position.set(x, y, z);
     ring.rotation.x = Math.PI / 2;
+    ring.userData.dynamic = true;   // it spins: never bake it into a static batch
     this.group.add(ring);
     this._animated.push((dt, t) => {
       ring.rotation.z += dt * 0.5;

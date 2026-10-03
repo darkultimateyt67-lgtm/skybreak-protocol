@@ -215,10 +215,17 @@ export class City {
     // spanning the whole city could never be culled, so all of it — and all
     // of it again for the shadow map — was drawn every frame, whichever way
     // the camera faced.
+    //
+    // Plain untextured materials are additionally FOLDED: their colour, glow,
+    // roughness and metalness are written per vertex, and they share a single
+    // material per tile (see foldMaterial). Same pixels, but a few hundred
+    // fewer draw calls — the city had ~150 such materials, each a draw per
+    // tile. Anything that changes at runtime is kept out (see _liveMaterials).
     const CELL = 160;
-    const groups = new Map();       // material -> tile -> meshes
+    const live = this._liveMaterials();
+    const groups = new Map();       // material (or fold material) -> tile -> meshes
     for (const obj of w.group.children) {
-      if (!obj.isMesh || obj.isInstancedMesh) continue;
+      if (!obj.isMesh || obj.isInstancedMesh || obj.userData.dynamic) continue;
       const mat = obj.material;
       if (!mat || Array.isArray(mat)) continue;
       // Transparent parts merge only when they are many panes of one shared
@@ -227,9 +234,15 @@ export class City {
       if (!obj.geometry || !obj.geometry.attributes.position) continue;
       obj.updateMatrixWorld(true);
       const e = obj.matrixWorld.elements;
-      const key = Math.floor(e[12] / CELL) + ',' + Math.floor(e[14] / CELL);
-      let tiles = groups.get(mat);
-      if (!tiles) groups.set(mat, (tiles = new Map()));
+      const g = obj.geometry;
+      if (!g.boundingSphere) g.computeBoundingSphere();
+      // Small things (bins, kerbs, benches, signs) go in their own batches,
+      // which are dropped beyond DETAIL_DIST: unreadable that far out.
+      const small = g.boundingSphere.radius * obj.matrixWorld.getMaxScaleOnAxis() < 4;
+      const key = Math.floor(e[12] / CELL) + ',' + Math.floor(e[14] / CELL) + (small ? 's' : '');
+      const gk = this._foldable(mat, live) ? this._foldMaterial(mat) : mat;
+      let tiles = groups.get(gk);
+      if (!tiles) groups.set(gk, (tiles = new Map()));
       if (!tiles.has(key)) tiles.set(key, []);
       tiles.get(key).push(obj);
     }
@@ -242,23 +255,13 @@ export class City {
     this._detailTiles = [];
     const folded = new Set();
     for (const [mat, tiles] of groups) {
+      const fold = !!mat.userData.cityFold;
       let total = 0;
       for (const l of tiles.values()) total += l.length;
-      if (total < 2) continue;
-      for (const list of tiles.values()) {
-        const merged = bakeWorld(list);
-        const mesh = new THREE.Mesh(merged, mat);
-        // A tile made only of small things (bins, kerbs, benches, signs) is
-        // dropped beyond DETAIL_DIST: unreadable that far out, and those tiles
-        // were most of the city's draw calls.
-        let big = 0;
-        for (const o of list) {
-          const g = o.geometry;
-          if (!g.boundingSphere) g.computeBoundingSphere();
-          const sc = o.matrixWorld.getMaxScaleOnAxis();
-          big = Math.max(big, g.boundingSphere.radius * sc);
-        }
-        if (big < 4) this._detailTiles.push(mesh);
+      if (total < 2 && !fold) continue;
+      for (const [key, list] of tiles) {
+        const mesh = new THREE.Mesh(bakeWorld(list, fold), mat);
+        if (key.endsWith('s')) this._detailTiles.push(mesh);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
         // Already in world space.
@@ -275,6 +278,41 @@ export class City {
     w.group.children.length = 0;
     w.group.children.push(...kept);
     return { batches, meshesFolded: folded.size };
+  }
+
+  /** Materials something changes while the game runs. Never folded. */
+  _liveMaterials() {
+    const live = new Set();
+    for (const b of this.sigBuckets || []) for (const m of [...b.ns, ...b.ew]) live.add(m);
+    for (const d of this.dungeons || []) {
+      for (const f of d._flames || []) live.add(f.mat);
+      for (const t of d.torches || []) live.add(t.mat);
+    }
+    return live;
+  }
+
+  /** An untextured, stock MeshStandardMaterial whose values never change. */
+  _foldable(m, live) {
+    if (m.type !== 'MeshStandardMaterial' || live.has(m) || m.userData.animated) return false;
+    if (m.transparent || m.vertexColors || m.alphaTest || m.opacity !== 1 || !m.visible) return false;
+    if (m.onBeforeCompile !== THREE.Material.prototype.onBeforeCompile) return false;
+    if (m.customProgramCacheKey !== THREE.Material.prototype.customProgramCacheKey) return false;
+    for (const k in m) if (m[k] && m[k].isTexture) return false;
+    return true;
+  }
+
+  /** The shared material a foldable one is folded into. */
+  _foldMaterial(m) {
+    const key = [m.side, m.flatShading, m.envMapIntensity, m.fog, m.depthWrite, m.depthTest,
+      m.polygonOffset, m.polygonOffsetFactor, m.polygonOffsetUnits, m.toneMapped, m.dithering,
+      m.shadowSide, m.wireframe, m.colorWrite].join('|');
+    this._folds = this._folds || new Map();
+    let f = this._folds.get(key);
+    if (!f) {
+      f = foldMaterial(m);
+      this._folds.set(key, f);
+    }
+    return f;
   }
 
   // ----------------------------------------------------------------- surfaces
@@ -1927,11 +1965,34 @@ const _nm = new THREE.Matrix3();
 const DETAIL_DIST = 260;
 
 /**
+ * A copy of `like` that takes colour, glow, roughness and metalness from the
+ * vertices (written by bakeWorld) instead of its uniforms.
+ */
+function foldMaterial(like) {
+  const f = like.clone();
+  f.vertexColors = true;
+  f.color.setRGB(1, 1, 1);
+  f.userData = { cityFold: true };
+  f.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec3 aEmis;\nattribute vec2 aRM;\nvarying vec3 vEmis;\nvarying vec2 vRM;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvEmis = aEmis;\nvRM = aRM;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vEmis;\nvarying vec2 vRM;')
+      .replace('vec3 totalEmissiveRadiance = emissive;', 'vec3 totalEmissiveRadiance = vEmis;')
+      .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = vRM.x;')
+      .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = vRM.y;');
+  };
+  f.customProgramCacheKey = () => 'city-fold';
+  return f;
+}
+
+/**
  * Merge meshes into one world-space geometry without cloning them first.
  * Keeps position, normal and uv (zero-filled where a part has none), plus any
  * other attribute that every part carries — the facade shader reads those.
  */
-function bakeWorld(meshes) {
+function bakeWorld(meshes, fold = false) {
   let vtx = 0, ni = 0;
   for (const m of meshes) {
     const g = m.geometry;
@@ -1943,7 +2004,11 @@ function bakeWorld(meshes) {
   const uv = new Float32Array(vtx * 2);
   const idx = vtx > 65535 ? new Uint32Array(ni) : new Uint16Array(ni);
   const first = meshes[0].geometry.attributes;
+  const col = fold ? new Float32Array(vtx * 3) : null;
+  const emis = fold ? new Float32Array(vtx * 3) : null;
+  const rm = fold ? new Float32Array(vtx * 2) : null;
   const extra = Object.keys(first).filter((n) => n !== 'position' && n !== 'normal' && n !== 'uv' &&
+    !(fold && n === 'color') &&
     meshes.every((m) => m.geometry.attributes[n] && m.geometry.attributes[n].itemSize === first[n].itemSize));
   const extraArr = extra.map((n) => new Float32Array(vtx * first[n].itemSize));
 
@@ -1980,6 +2045,17 @@ function bakeWorld(meshes) {
       const out = extraArr[k];
       for (let i = 0; i < c; i++) for (let j = 0; j < sz; j++) out[(vo + i) * sz + j] = A.getComponent(i, j);
     }
+    if (fold) {
+      // The material's own values, per vertex. emissive is pre-multiplied by
+      // its intensity, which is exactly what three.js uploads as the uniform.
+      const mt = m.material;
+      const k = mt.emissiveIntensity;
+      for (let i = vo; i < vo + c; i++) {
+        col[i * 3] = mt.color.r; col[i * 3 + 1] = mt.color.g; col[i * 3 + 2] = mt.color.b;
+        emis[i * 3] = mt.emissive.r * k; emis[i * 3 + 1] = mt.emissive.g * k; emis[i * 3 + 2] = mt.emissive.b * k;
+        rm[i * 2] = mt.roughness; rm[i * 2 + 1] = mt.metalness;
+      }
+    }
     const gi = g.index;
     if (gi) { const arr = gi.array; for (let i = 0; i < gi.count; i++) idx[io++] = arr[i] + vo; }
     else for (let i = 0; i < c; i++) idx[io++] = vo + i;
@@ -1990,6 +2066,11 @@ function bakeWorld(meshes) {
   out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
   out.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   extra.forEach((n, k) => out.setAttribute(n, new THREE.BufferAttribute(extraArr[k], first[n].itemSize)));
+  if (fold) {
+    out.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    out.setAttribute('aEmis', new THREE.BufferAttribute(emis, 3));
+    out.setAttribute('aRM', new THREE.BufferAttribute(rm, 2));
+  }
   out.setIndex(new THREE.BufferAttribute(idx, 1));
   out.computeBoundingSphere();
   return out;

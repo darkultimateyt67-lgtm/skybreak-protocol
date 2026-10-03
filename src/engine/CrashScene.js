@@ -107,15 +107,18 @@ export class CrashScene {
     // The rear ramp — it tears away at the breach and becomes your window.
     this._ramp = add(new THREE.BoxGeometry(3.0, 2.6, 0.14), hull, 0, 0.4, 4);
 
-    // Interior fill light so the bay isn't a black box.
-    const lamp = new THREE.PointLight(0xbcd8e8, 12, 12, 2);
-    lamp.position.set(0, 1.5, 0);
-    g.add(lamp);
+    // Interior fill light so the bay isn't a black box. Both are borrowed
+    // from the effects pool rather than added: a light added here and
+    // removed at touchdown changed the scene's light count twice, and each
+    // change recompiles every shader — a freeze just as control is handed over.
+    const fx = this.game.effects;
+    const lamp = fx.reserveLight() || new THREE.PointLight();
+    lamp.color.setHex(0xbcd8e8); lamp.intensity = 12; lamp.distance = 12; lamp.decay = 2;
     this._lamp = lamp;
-    const red = new THREE.PointLight(0xff3b30, 0, 10, 2);
-    red.position.set(0, 1.4, -2);
-    g.add(red);
+    const red = fx.reserveLight() || new THREE.PointLight();
+    red.color.setHex(0xff3b30); red.intensity = 0; red.distance = 10; red.decay = 2;
     this._redLamp = red;
+    this._lampAt = [new THREE.Vector3(0, 1.5, 0), new THREE.Vector3(0, 1.4, -2)];
 
     this.game.scene.add(g);
     this.group = g;
@@ -135,6 +138,8 @@ export class CrashScene {
   }
 
   dispose() {
+    if (this._lamp) { this.game.effects.releaseLight(this._lamp); this._lamp = null; }
+    if (this._redLamp) { this.game.effects.releaseLight(this._redLamp); this._redLamp = null; }
     if (this.group) {
       this.game.scene.remove(this.group);
       this.group.traverse((o) => {
@@ -156,6 +161,12 @@ export class CrashScene {
     this.t += dt;
     const t = this.t;
     const game = this.game;
+    // The borrowed lamps are not children of the bay, so carry them with it.
+    if (this.group && this._lamp) {
+      this.group.updateMatrixWorld();
+      this._lamp.position.copy(this._lampAt[0]).applyMatrix4(this.group.matrixWorld);
+      this._redLamp.position.copy(this._lampAt[1]).applyMatrix4(this.group.matrixWorld);
+    }
     const cam = game.camera;
     const fade = document.getElementById('fade');
 

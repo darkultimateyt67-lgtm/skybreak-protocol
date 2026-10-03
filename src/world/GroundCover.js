@@ -1,5 +1,7 @@
 import * as THREE from 'three';
-import { chunkInstanced, cullByDistance } from './Chunk.js';
+import { chunkInstanced } from './Chunk.js';
+
+const _cp = new THREE.Vector3();
 
 /**
  * GroundCover — the forest floor.
@@ -28,16 +30,16 @@ export class GroundCover {
     this._time = 0;
     // Rectangles where nothing should grow: [x, z, halfW, halfD].
     this.exclusions = [];
-    // [group, drawDistance] per layer, culled each frame.
+    // [group, drawDistance, shadowDistance] per layer, culled each frame.
     this._layers = [];
   }
 
   /** Tile a finished layer so off-screen and distant parts are skipped. */
-  _add(mesh, far) {
+  _add(mesh, far, shadowFar = 0) {
     const g = chunkInstanced(mesh, 24, 1.5);
     mesh.geometry.dispose();
     this.group.add(g);
-    this._layers.push([g, far]);
+    this._layers.push([g, far, mesh.castShadow ? shadowFar : 0]);
     return g;
   }
 
@@ -59,6 +61,16 @@ export class GroundCover {
       shader.uniforms.uStrength = { value: strength };
       shader.uniforms.uFadeFar = { value: fadeFar };
       this._shaders.push(shader);
+      // Double-sided blades: by default the back face flips its normal toward
+      // the ground, so every blade seen from behind rendered black. Lit from
+      // the sky on both faces, same as the city's lawns.
+      if (mat.side === THREE.DoubleSide) {
+        shader.fragmentShader = shader.fragmentShader.replace('#include <normal_fragment_begin>', `
+          float faceDirection = gl_FrontFacing ? 1.0 : -1.0;
+          vec3 normal = normalize( vNormal );
+          vec3 nonPerturbedNormal = normal;
+        `);
+      }
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', `
           #include <common>
@@ -225,7 +237,7 @@ export class GroundCover {
         color.setHSL(0.27 + (Math.random() - 0.5) * 0.05, 0.42, 0.17 + Math.random() * 0.14);
         mesh.setColorAt(i, color);
       });
-      this.ferns = this._add(mesh, 95);
+      this.ferns = this._add(mesh, 95, 40);
     }
 
     // ---- Bushes: rounded shrub clumps ---------------------------------------
@@ -248,7 +260,7 @@ export class GroundCover {
         color.setHSL(0.26 + (Math.random() - 0.5) * 0.05, 0.38, 0.14 + Math.random() * 0.1);
         mesh.setColorAt(i, color);
       });
-      this.bushes = this._add(mesh, 150);
+      this.bushes = this._add(mesh, 150, 75);
     }
 
     // ---- Fallen branches ----------------------------------------------------
@@ -271,7 +283,7 @@ export class GroundCover {
         color.setHSL(0.08, 0.3, l);
         mesh.setColorAt(i, color);
       });
-      this.branches = this._add(mesh, 80);
+      this.branches = this._add(mesh, 80, 40);
     }
 
     // ---- Mushrooms ------------------------------------------------------------
@@ -327,7 +339,17 @@ export class GroundCover {
   update(dt) {
     this._time += dt;
     for (const s of this._shaders) s.uniforms.uTime.value = this._time;
+    // Small things only cast shadows near the camera: past ~40 m a fern's
+    // shadow is under a pixel, and the shadow pass was drawing every tile of
+    // undergrowth across the whole shadow map — half the forest's draw calls.
     const cam = this.world.game.camera.position;
-    for (const [g, far] of this._layers) cullByDistance(g, cam, far);
+    for (const [g, far, shadowFar] of this._layers) {
+      for (const c of g.userData.chunks) {
+        const s = c.boundingSphere;
+        const d = _cp.copy(s.center).distanceTo(cam) - s.radius;
+        c.visible = d < far;
+        if (shadowFar) c.castShadow = d < shadowFar;
+      }
+    }
   }
 }

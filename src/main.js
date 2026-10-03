@@ -1,3 +1,4 @@
+import './engine/FastMatrix.js';
 import { Game } from './engine/Game.js';
 import { Loading } from './ui/Loading.js';
 
@@ -13,6 +14,9 @@ import { Loading } from './ui/Loading.js';
   // Exposed for the developer console and automated smoke tests.
   window.GAME = game;
 
+  Loading.step('Preparing graphics', 0.93, 1, 2000);
+  await Loading.frame();
+  await game.warmShaders();
   Loading.step('Ready', 1);
   await Loading.frame();
   Loading.hide();

@@ -523,6 +523,8 @@ export class Vehicle {
     this._res = { onGround: false, hitCeiling: false, wallNormal: null, wallRunOK: false };
 
     this.group = new THREE.Group();
+    // Past draw distance the whole car is hidden; skip its transforms too.
+    this.group.skipWhenHidden = true;
     // An artist-made body if one was dropped in for this chassis; otherwise
     // the generated one. Wheels, interior and occupants are still built
     // either way — a downloaded shell doesn't come with a steering wheel the
@@ -1513,7 +1515,10 @@ export class Vehicle {
       if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
       const sc = Math.max(o.scale.x, o.scale.y, o.scale.z);
       const r = (o.geometry.boundingSphere ? o.geometry.boundingSphere.radius : 0) * sc;
-      if (r < 0.45) this._lodDetail.push(o);
+      if (r < 0.45) {
+        this._lodDetail.push(o);
+        o.skipWhenHidden = true;
+      }
     });
     this._lodNear = true;
   }

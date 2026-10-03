@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { VirtualLight } from '../effects/VirtualLight.js';
 
 const _v = new THREE.Vector3();
 
@@ -28,7 +29,7 @@ export class Traversal {
   }
 
   reset() {
-    for (const d of this.drops) this.game.scene.remove(d.group);
+    for (const d of this.drops) { this.game.scene.remove(d.group); d.beacon?.dispose?.(); }
     for (const p of this.pads) this.game.scene.remove(p.group);
     for (const z of this.ziplines) this.game.scene.remove(z.group);
     this.drops = [];
@@ -137,7 +138,8 @@ export class Traversal {
       ), band);
       g.add(b);
     }
-    const beacon = new THREE.PointLight(0xf5a524, 14, 26, 2);
+    // Virtual: a real light added mid-match would recompile every shader.
+    const beacon = new VirtualLight(0xf5a524, 14, 26, 2);
     beacon.position.y = 1.4;
     g.add(beacon);
 
