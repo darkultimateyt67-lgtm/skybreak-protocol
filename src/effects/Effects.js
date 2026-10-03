@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { VirtualLight } from './VirtualLight.js';
 
 /** Real lights lent to the nearest VirtualLights at any one time. */
-const VIRTUAL_SLOTS = 4;
+const VIRTUAL_SLOTS = 2;
 const _vp = new THREE.Vector3();
 
 const _v = new THREE.Vector3();
@@ -22,9 +22,12 @@ export class Effects {
     this._initCasings(40);
     this._initTracers(28);
     this._initDecals(64);
-    // Shared: muzzle flashes, blasts, the crash bay lamps and the dungeon
-    // torches all borrow from these. The count never changes at runtime.
-    this._initFlashes(8);
+    // Shared: muzzle flashes, blasts, the crash bay lamps, the dungeon
+    // torches and virtual lights all borrow from these. The count never
+    // changes at runtime, and it is kept small: every light in the scene is
+    // code every lit shader compiles and every lit pixel runs (~30 ms of
+    // compile per light per shader on an ordinary laptop).
+    this._initFlashes(4);
   }
 
   // ------------------------------------------------------------- particles

@@ -1,3 +1,4 @@
+import { FarProxy } from './FarProxy.js';
 import * as THREE from 'three';
 import { Chassis } from './Chassis.js';
 import { Body } from '../physics/Rigid.js';
@@ -539,6 +540,7 @@ export class Vehicle {
     this.panelStatic = [];
     this._build(opts);
     this._mergeStatic();
+    this._shareMaterials();
     // Suspension, weight transfer, air time and rollover. Built after the
     // body, because it reads the wheels' rest positions off the meshes.
     this.chassis = new Chassis(this);
@@ -1379,6 +1381,33 @@ export class Vehicle {
   }
 
   /** Hide the occupants when the player takes the wheel, show them otherwise. */
+  /** Swap every material for the shared identical one. Beacons stay private. */
+  _shareMaterials() {
+    const own = new Set(this.beacons || []);
+    this.group.traverse((o) => {
+      if (!o.isMesh || !o.material || Array.isArray(o.material) || own.has(o.material)) return;
+      o.material = sharedMaterial(o.material);
+    });
+  }
+
+  /** Give this vehicle private copies of its shared materials, once. */
+  ownMaterials() {
+    if (this._ownMats) return;
+    this._ownMats = true;
+    const copies = new Map();
+    this.group.traverse((o) => {
+      const m = o.material;
+      if (!o.isMesh || !m || Array.isArray(m) || !m.userData.shared) return;
+      if (!copies.has(m)) {
+        const c = m.clone();
+        c.userData = {};
+        copies.set(m, c);
+      }
+      o.material = copies.get(m);
+    });
+    this._far?.invalidate();
+  }
+
   setOccupantsVisible(v) {
     if (this.occupants) this.occupants.visible = v;
   }
@@ -1535,6 +1564,12 @@ export class Vehicle {
     if (near !== this._lodNear) {
       this._lodNear = near;
       for (const m of this._lodDetail) m.visible = near;
+    }
+    // Past detail range the remaining parts become one mesh per material.
+    // Bikes are left alone: the rider's lean is their whole silhouette.
+    if (!this.bike) {
+      if (!this._far) this._far = new FarProxy(this.group, [this.occupants]);
+      this._far.set(!near);
     }
     // Past the far cutoff the whole thing goes. 420 m is beyond where a car
     // reads as anything but a coloured speck, and it is the difference
@@ -1799,7 +1834,9 @@ export class Vehicle {
       g.effects.burst(this.position.clone().setY(1.1), { count: 40, color: 0xffa040, speed: 14, life: 0.9 });
     }
     if (g.audio && g.audio.explosion) g.audio.explosion();
+    this.ownMaterials();   // shared materials: blacken only this wreck's copies
     for (const m of this.group.children) if (m.material) m.material.color?.setHex?.(0x14100e);
+    this._far?.invalidate();
   }
 
   /**
@@ -2306,6 +2343,7 @@ export class Vehicle {
   }
 
   _wakePanels() {
+    this._far?.invalidate();
     if (!this.panels.length) return;
     if (!this._panelsLive) {
       this._panelsLive = true;
@@ -2348,12 +2386,72 @@ export class Vehicle {
     this.group.traverse((o) => {
       if (o.geometry) o.geometry.dispose();
       if (o.material) {
-        for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.dispose();
+        for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+          if (!m.userData.shared) m.dispose();
+        }
       }
     });
   }
 }
 
+
+/**
+ * Materials shared between vehicles.
+ *
+ * Every car built ~35 materials of its own, so a city of 170 cars carried
+ * ~6,000 materials with only ~120 distinct looks between them. three.js sets
+ * up each material separately — that alone was most of the "Preparing
+ * graphics" wait — and switches state for each one every frame. Identical
+ * materials are now one object. A car that needs to change its own (crash
+ * scorching) takes private copies first: see Vehicle.ownMaterials().
+ */
+const SHARED = new Map();
+const _base = THREE.Material.prototype;
+
+function materialKey(m) {
+  const parts = [m.type];
+  for (const k of Object.keys(m)) {
+    if (k === 'uuid' || k === 'id' || k === 'name' || k === 'version' || k[0] === '_') continue;
+    const v = m[k];
+    if (v === null || v === undefined || typeof v === 'number' || typeof v === 'boolean' || typeof v === 'string') {
+      parts.push(k + '=' + v);
+    } else if (v.isColor) {
+      parts.push(k + '=' + v.r + ',' + v.g + ',' + v.b);
+    } else if (v.isTexture) {
+      parts.push(k + '=' + v.uuid);
+    } else if (v.isVector2) {
+      parts.push(k + '=' + v.x + ',' + v.y);
+    } else if (v.isEuler) {
+      parts.push(k + '=' + v.x + ',' + v.y + ',' + v.z + v.order);
+    } else if (Array.isArray(v)) {
+      parts.push(k + '=' + JSON.stringify(v));
+    } else if (k === 'defines') {
+      parts.push(k + '=' + JSON.stringify(v));   // standard materials carry their own
+    } else if (k === 'userData') {
+      if (Object.keys(v).some((x) => x !== 'shared')) return null;
+    } else if (typeof v === 'function') {
+      if (v !== _base[k]) return null;   // custom shader hook: keep it private
+    } else {
+      return null;                        // anything unfamiliar: don't risk it
+    }
+  }
+  return parts.join('|');
+}
+
+function sharedMaterial(m) {
+  if (m.userData.shared) return m;
+  const key = materialKey(m);
+  if (key === null) return m;
+  let s = SHARED.get(key);
+  if (!s) {
+    s = m;
+    s.userData.shared = true;
+    SHARED.set(key, s);
+  } else if (s !== m) {
+    m.dispose();
+  }
+  return s;
+}
 
 /** Merge geometries that already share a material. Position/normal/uv only. */
 function mergeParts(geos) {

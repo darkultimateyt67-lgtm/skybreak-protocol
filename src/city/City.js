@@ -139,6 +139,8 @@ export class City {
 
   build() {
     const w = this.world;
+    // Plain boxes are recorded, not built, until the merge (see World._block).
+    w._bakeBoxes = [];
     this._materials();
 
     const xs = this._gridLines();
@@ -189,6 +191,9 @@ export class City {
         tagFacade(o, [Math.abs(Math.sin(p.x * 12.9898 + p.z * 78.233)) % 1, 1, 1, 0]);
       }
     });
+    for (const r of w._bakeBoxes) {
+      if (facadeSet.has(r.material) && !r.bld) r.bld = [Math.abs(Math.sin(r.x * 12.9898 + r.z * 78.233)) % 1, 1, 1, 0];
+    }
 
     const merged = this._mergeStatics();
     return {
@@ -223,7 +228,24 @@ export class City {
     // tile. Anything that changes at runtime is kept out (see _liveMaterials).
     const CELL = 160;
     const live = this._liveMaterials();
+    // Folded materials' values live in one small table; each vertex carries
+    // only its row number. See foldMaterial.
+    this._palette = { uniform: { value: null }, index: new Map(), list: [] };
     const groups = new Map();       // material (or fold material) -> tile -> meshes
+    const boxes = w._bakeBoxes || [];
+    w._bakeBoxes = null;
+    const boxR = Math.sqrt(3) / 2;  // bounding radius of the unit box
+    for (const r of boxes) {
+      const mat = r.material;
+      if (mat.transparent && mat !== this._shopGlass) { w.group.add(boxMesh(w, r)); continue; }
+      const small = boxR * Math.max(r.w, r.h, r.d) < 4;
+      const key = Math.floor(r.x / CELL) + ',' + Math.floor(r.z / CELL) + (small ? 's' : '');
+      const gk = this._foldable(mat, live) ? this._foldMaterial(mat) : mat;
+      let tiles = groups.get(gk);
+      if (!tiles) groups.set(gk, (tiles = new Map()));
+      if (!tiles.has(key)) tiles.set(key, []);
+      tiles.get(key).push(r);
+    }
     for (const obj of w.group.children) {
       if (!obj.isMesh || obj.isInstancedMesh || obj.userData.dynamic) continue;
       const mat = obj.material;
@@ -258,9 +280,10 @@ export class City {
       const fold = !!mat.userData.cityFold;
       let total = 0;
       for (const l of tiles.values()) total += l.length;
-      if (total < 2 && !fold) continue;
+      // A lone record has no mesh to fall back on, so it is baked too.
+      if (total < 2 && !fold && !tiles.values().next().value[0].isStaticBox) continue;
       for (const [key, list] of tiles) {
-        const mesh = new THREE.Mesh(bakeWorld(list, fold), mat);
+        const mesh = new THREE.Mesh(bakeWorld(list, fold, w._boxGeo, this._palette), mat);
         if (key.endsWith('s')) this._detailTiles.push(mesh);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
@@ -271,6 +294,7 @@ export class City {
         for (const o of list) folded.add(o);
       }
     }
+    this._palette.uniform.value = paletteTexture(this._palette.list);
     // One pass instead of one splice per part. NOT disposed: _block hands
     // every box the same shared BoxGeometry.
     const kept = w.group.children.filter((o) => !folded.has(o));
@@ -309,7 +333,7 @@ export class City {
     this._folds = this._folds || new Map();
     let f = this._folds.get(key);
     if (!f) {
-      f = foldMaterial(m);
+      f = foldMaterial(m, this._palette.uniform);
       this._folds.set(key, f);
     }
     return f;
@@ -1054,9 +1078,8 @@ export class City {
         awn = new THREE.MeshStandardMaterial({ color: kind.sign, roughness: 0.8 });
         this._awnMats.set(kind.id, awn);
       }
-      const aw = w._block(unitW - 1.4, 0.12, 2.0, cx, 3.05, cz + depth / 2 + 0.5, awn,
-        { collide: false });
-      aw.rotation.x = -0.28;
+      w._block(unitW - 1.4, 0.12, 2.0, cx, 3.05, cz + depth / 2 + 0.5, awn,
+        { collide: false, tiltX: -0.28 });
       // Support poles.
       for (const s of [-1, 1]) {
         w._block(0.09, 3.0, 0.09, cx + s * (unitW / 2 - 0.9), 0, cz + depth / 2 + 1.3,
@@ -1421,9 +1444,8 @@ export class City {
         const run = pw * 0.8;
         const ang = Math.atan2(floorH, run);
         const sx = nx ? cx : cx + dir * 0.0, sz = nx ? cz : cz;
-        const stair = w._block(nx ? 0.7 : Math.hypot(run, floorH), 0.06, nx ? Math.hypot(run, floorH) : 0.7,
-          sx, fy - floorH / 2, sz, A.iron, { collide: false, rotY: nx ? 0 : 0, tiltX: nx ? dir * ang : 0 });
-        if (!nx) stair.rotation.z = dir * ang;
+        w._block(nx ? 0.7 : Math.hypot(run, floorH), 0.06, nx ? Math.hypot(run, floorH) : 0.7,
+          sx, fy - floorH / 2, sz, A.iron, { collide: false, tiltX: nx ? dir * ang : 0, rotZ: nx ? 0 : dir * ang });
       }
     }
   }
@@ -1961,6 +1983,21 @@ export class City {
 }
 
 const _nm = new THREE.Matrix3();
+const _bm = new THREE.Matrix4();
+const _bp = new THREE.Vector3();
+const _bq = new THREE.Quaternion();
+const _bs = new THREE.Vector3();
+
+/** A real Mesh for a box record that can't be baked (transparent). */
+function boxMesh(w, r) {
+  const m = new THREE.Mesh(w._boxGeo, r.material);
+  m.position.set(r.x, r.y, r.z);
+  m.scale.set(r.w, r.h, r.d);
+  if (r.quat) m.quaternion.copy(r.quat);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  return m;
+}
 /** Beyond this, merged tiles of small street detail are not drawn. */
 const DETAIL_DIST = 260;
 
@@ -1968,23 +2005,56 @@ const DETAIL_DIST = 260;
  * A copy of `like` that takes colour, glow, roughness and metalness from the
  * vertices (written by bakeWorld) instead of its uniforms.
  */
-function foldMaterial(like) {
+function foldMaterial(like, palette) {
   const f = like.clone();
-  f.vertexColors = true;
+  f.vertexColors = false;
   f.color.setRGB(1, 1, 1);
   f.userData = { cityFold: true };
   f.onBeforeCompile = (sh) => {
+    sh.uniforms.uFoldPal = palette;
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec3 aEmis;\nattribute vec2 aRM;\nvarying vec3 vEmis;\nvarying vec2 vRM;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvEmis = aEmis;\nvRM = aRM;');
+      .replace('#include <common>', '#include <common>\nattribute float aMat;\nflat varying float vMat;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvMat = aMat;');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vEmis;\nvarying vec2 vRM;')
-      .replace('vec3 totalEmissiveRadiance = emissive;', 'vec3 totalEmissiveRadiance = vEmis;')
-      .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = vRM.x;')
-      .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = vRM.y;');
+      .replace('#include <common>', '#include <common>\nuniform sampler2D uFoldPal;\nflat varying float vMat;')
+      .replace('vec3 totalEmissiveRadiance = emissive;', `
+        // Row 0: colour + roughness. Row 1: glow (pre-multiplied) + metalness.
+        int fi = int(vMat + 0.5);
+        vec4 palA = texelFetch(uFoldPal, ivec2(fi, 0), 0);
+        vec4 palB = texelFetch(uFoldPal, ivec2(fi, 1), 0);
+        vec3 totalEmissiveRadiance = palB.rgb;`)
+      .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= palA.rgb;')
+      .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = palA.a;')
+      .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = palB.a;');
   };
-  f.customProgramCacheKey = () => 'city-fold';
+  f.customProgramCacheKey = () => 'city-fold-pal';
   return f;
+}
+
+/**
+ * The fold table: one column per folded material. Row 0 is colour and
+ * roughness, row 1 is glow (multiplied by its intensity, as three.js does for
+ * the uniform) and metalness. Floats, so every value is exactly the
+ * material's own.
+ */
+function paletteTexture(list) {
+  const n = Math.max(1, list.length);
+  const data = new Float32Array(n * 2 * 4);
+  list.forEach((m, i) => {
+    const k = m.emissiveIntensity;
+    data.set([m.color.r, m.color.g, m.color.b, m.roughness], i * 4);
+    data.set([m.emissive.r * k, m.emissive.g * k, m.emissive.b * k, m.metalness], (n + i) * 4);
+  });
+  const t = new THREE.DataTexture(data, n, 2, THREE.RGBAFormat, THREE.FloatType);
+  t.minFilter = t.magFilter = THREE.NearestFilter;
+  t.generateMipmaps = false;
+  t.needsUpdate = true;
+  return t;
+}
+
+/** Once a static batch is on the GPU nothing reads its arrays again: let them go. */
+function freeAfterUpload() {
+  this.array = null;
 }
 
 /**
@@ -1992,69 +2062,97 @@ function foldMaterial(like) {
  * Keeps position, normal and uv (zero-filled where a part has none), plus any
  * other attribute that every part carries — the facade shader reads those.
  */
-function bakeWorld(meshes, fold = false) {
+function bakeWorld(meshes, fold = false, boxGeo = null, palette = null) {
   let vtx = 0, ni = 0;
   for (const m of meshes) {
-    const g = m.geometry;
+    const g = m.isStaticBox ? boxGeo : m.geometry;
     vtx += g.attributes.position.count;
     ni += g.index ? g.index.count : g.attributes.position.count;
   }
   const pos = new Float32Array(vtx * 3);
-  const nor = new Float32Array(vtx * 3);
-  const uv = new Float32Array(vtx * 2);
+  // Normals as signed bytes (normalised): a quarter of the memory, and for a
+  // city of flat faces the 1/127 step is not something anyone can see.
+  const nor = new Int8Array(vtx * 3);
+  // Folded batches have no textures, so they need no texture coordinates.
+  const uv = fold ? null : new Float32Array(vtx * 2);
   const idx = vtx > 65535 ? new Uint32Array(ni) : new Uint16Array(ni);
-  const first = meshes[0].geometry.attributes;
-  const col = fold ? new Float32Array(vtx * 3) : null;
-  const emis = fold ? new Float32Array(vtx * 3) : null;
-  const rm = fold ? new Float32Array(vtx * 2) : null;
+  const geoOf = (m) => (m.isStaticBox ? boxGeo : m.geometry);
+  const first = geoOf(meshes[0]).attributes;
+  // Facade data: on a mesh it is an attribute, on a box record a field.
+  const hasBld = meshes.every((m) => (m.isStaticBox ? !!m.bld : !!m.geometry.attributes.aBld));
+  const bldArr = hasBld ? new Float32Array(vtx * 4) : null;
+  const matIdx = fold ? new Uint16Array(vtx) : null;
   const extra = Object.keys(first).filter((n) => n !== 'position' && n !== 'normal' && n !== 'uv' &&
-    !(fold && n === 'color') &&
-    meshes.every((m) => m.geometry.attributes[n] && m.geometry.attributes[n].itemSize === first[n].itemSize));
+    n !== 'aBld' && !(fold && n === 'color') &&
+    meshes.every((m) => { const a = geoOf(m).attributes[n]; return a && a.itemSize === first[n].itemSize; }));
   const extraArr = extra.map((n) => new Float32Array(vtx * first[n].itemSize));
 
+  // Plain (non-interleaved, non-normalised) attributes are read straight from
+  // their arrays: through getX/getY/getZ this loop ran 3.5 million vertices
+  // in about four seconds.
+  const raw = (A, size) => (A && !A.isInterleavedBufferAttribute && !A.normalized && A.itemSize === size ? A.array : null);
   let vo = 0, io = 0;
   for (const m of meshes) {
-    m.updateMatrixWorld(true);
-    const e = m.matrixWorld.elements;
-    _nm.getNormalMatrix(m.matrixWorld);
+    // matrixWorld is current: _mergeStatics updated every part before grouping.
+    // A box record's is built here from its centre, rotation and size.
+    const mw = m.isStaticBox
+      ? _bm.compose(_bp.set(m.x, m.y, m.z), m.quat || _bq.identity(), _bs.set(m.w, m.h, m.d))
+      : m.matrixWorld;
+    const e = mw.elements;
+    _nm.getNormalMatrix(mw);
     const ne = _nm.elements;
-    const g = m.geometry;
+    const g = geoOf(m);
     const P = g.attributes.position, N = g.attributes.normal, T = g.attributes.uv;
+    const pa = raw(P, 3), na = raw(N, 3), ta = raw(T, 2);
     const c = P.count;
     for (let i = 0; i < c; i++) {
-      const x = P.getX(i), y = P.getY(i), z = P.getZ(i);
+      let x, y, z;
+      if (pa) { x = pa[i * 3]; y = pa[i * 3 + 1]; z = pa[i * 3 + 2]; } else { x = P.getX(i); y = P.getY(i); z = P.getZ(i); }
       const o = (vo + i) * 3;
       pos[o] = e[0] * x + e[4] * y + e[8] * z + e[12];
       pos[o + 1] = e[1] * x + e[5] * y + e[9] * z + e[13];
       pos[o + 2] = e[2] * x + e[6] * y + e[10] * z + e[14];
       if (N) {
-        const a = N.getX(i), b = N.getY(i), d = N.getZ(i);
-        let nx = ne[0] * a + ne[3] * b + ne[6] * d;
-        let ny = ne[1] * a + ne[4] * b + ne[7] * d;
-        let nz = ne[2] * a + ne[5] * b + ne[8] * d;
-        const l = Math.hypot(nx, ny, nz) || 1;
-        nor[o] = nx / l; nor[o + 1] = ny / l; nor[o + 2] = nz / l;
+        let a, b, d;
+        if (na) { a = na[i * 3]; b = na[i * 3 + 1]; d = na[i * 3 + 2]; } else { a = N.getX(i); b = N.getY(i); d = N.getZ(i); }
+        const nx = ne[0] * a + ne[3] * b + ne[6] * d;
+        const ny = ne[1] * a + ne[4] * b + ne[7] * d;
+        const nz = ne[2] * a + ne[5] * b + ne[8] * d;
+        const l = 127 / (Math.sqrt(nx * nx + ny * ny + nz * nz) || 1);
+        nor[o] = Math.round(nx * l); nor[o + 1] = Math.round(ny * l); nor[o + 2] = Math.round(nz * l);
       } else {
-        nor[o + 1] = 1;
+        nor[o + 1] = 127;
       }
-      if (T) { uv[(vo + i) * 2] = T.getX(i); uv[(vo + i) * 2 + 1] = T.getY(i); }
+      if (!uv) continue;
+      if (ta) { uv[(vo + i) * 2] = ta[i * 2]; uv[(vo + i) * 2 + 1] = ta[i * 2 + 1]; }
+      else if (T) { uv[(vo + i) * 2] = T.getX(i); uv[(vo + i) * 2 + 1] = T.getY(i); }
+    }
+    if (hasBld) {
+      if (m.isStaticBox) {
+        const b = m.bld;
+        for (let i = vo; i < vo + c; i++) { bldArr[i * 4] = b[0]; bldArr[i * 4 + 1] = b[1]; bldArr[i * 4 + 2] = b[2]; bldArr[i * 4 + 3] = b[3]; }
+      } else {
+        const A = g.attributes.aBld;
+        for (let i = 0; i < c; i++) for (let j = 0; j < 4; j++) bldArr[(vo + i) * 4 + j] = A.getComponent(i, j);
+      }
     }
     for (let k = 0; k < extra.length; k++) {
       const A = g.attributes[extra[k]];
       const sz = A.itemSize;
       const out = extraArr[k];
-      for (let i = 0; i < c; i++) for (let j = 0; j < sz; j++) out[(vo + i) * sz + j] = A.getComponent(i, j);
+      const aa = raw(A, sz);
+      if (aa) out.set(aa.subarray(0, c * sz), vo * sz);
+      else for (let i = 0; i < c; i++) for (let j = 0; j < sz; j++) out[(vo + i) * sz + j] = A.getComponent(i, j);
     }
     if (fold) {
-      // The material's own values, per vertex. emissive is pre-multiplied by
-      // its intensity, which is exactly what three.js uploads as the uniform.
       const mt = m.material;
-      const k = mt.emissiveIntensity;
-      for (let i = vo; i < vo + c; i++) {
-        col[i * 3] = mt.color.r; col[i * 3 + 1] = mt.color.g; col[i * 3 + 2] = mt.color.b;
-        emis[i * 3] = mt.emissive.r * k; emis[i * 3 + 1] = mt.emissive.g * k; emis[i * 3 + 2] = mt.emissive.b * k;
-        rm[i * 2] = mt.roughness; rm[i * 2 + 1] = mt.metalness;
+      let row = palette.index.get(mt);
+      if (row === undefined) {
+        row = palette.list.length;
+        palette.list.push(mt);
+        palette.index.set(mt, row);
       }
+      matIdx.fill(row, vo, vo + c);
     }
     const gi = g.index;
     if (gi) { const arr = gi.array; for (let i = 0; i < gi.count; i++) idx[io++] = arr[i] + vo; }
@@ -2063,16 +2161,15 @@ function bakeWorld(meshes, fold = false) {
   }
   const out = new THREE.BufferGeometry();
   out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
-  out.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  out.setAttribute('normal', new THREE.BufferAttribute(nor, 3, true));
+  if (uv) out.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   extra.forEach((n, k) => out.setAttribute(n, new THREE.BufferAttribute(extraArr[k], first[n].itemSize)));
-  if (fold) {
-    out.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    out.setAttribute('aEmis', new THREE.BufferAttribute(emis, 3));
-    out.setAttribute('aRM', new THREE.BufferAttribute(rm, 2));
-  }
+  if (hasBld) out.setAttribute('aBld', new THREE.BufferAttribute(bldArr, 4));
+  if (fold) out.setAttribute('aMat', new THREE.BufferAttribute(matIdx, 1));
   out.setIndex(new THREE.BufferAttribute(idx, 1));
   out.computeBoundingSphere();
+  for (const a of Object.values(out.attributes)) a.onUpload(freeAfterUpload);
+  out.index.onUpload(freeAfterUpload);
   return out;
 }
 

@@ -350,7 +350,10 @@ export function facadeMaterial(styleId) {
         normal = normalize(normal + (viewMatrix * vec4(fBend, 0.0)).xyz);`)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += fEmit;');
   };
-  mat.customProgramCacheKey = () => 'facade-' + styleId;
+  // One program for every style: the GLSL is identical and the style lives
+  // entirely in uniforms, which three.js keeps per material. A key per style
+  // compiled nine copies of the same shader at load.
+  mat.customProgramCacheKey = () => 'facade';
   mat.userData.facade = styleId;
   _mats.set(styleId, mat);
   return mat;
@@ -368,6 +371,9 @@ export function facadeMaterials() {
  * attribute sets across a batch.
  */
 export function tagFacade(mesh, bld) {
+  // A baked box record (World._block during a city build): the merge writes
+  // the attribute itself.
+  if (mesh.isStaticBox) { mesh.bld = bld; return; }
   let g = mesh.geometry;
   if (!g.userData.ownedByFacade) {
     g = g.clone();
@@ -424,7 +430,7 @@ export function roofTileMaterial(color) {
           diffuseColor.rgb = c;
         }`);
   };
-  mat.customProgramCacheKey = () => key;
+  mat.customProgramCacheKey = () => 'roof';   // same shader for every colour
   _mats.set(key, mat);
   return mat;
 }

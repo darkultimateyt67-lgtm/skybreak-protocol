@@ -311,7 +311,7 @@ export class Game {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.container.appendChild(this.renderer.domElement);
@@ -776,8 +776,17 @@ export class Game {
     const R = this.renderer;
     this.scene.updateMatrixWorld();
     try {
-      if (R.compileAsync) await R.compileAsync(this.scene, this.camera);
-      else R.compile(this.scene, this.camera);
+      // Compile against the target the scene is really drawn into: the
+      // composer's buffer, not the canvas. Output colour space is part of a
+      // shader's identity, so warming against the canvas compiled a full set
+      // of variants nothing ever used, and the real ones still compiled on
+      // the first frame. compile() reads the target synchronously, so it can
+      // be restored before awaiting.
+      const prev = R.getRenderTarget();
+      R.setRenderTarget(this.composer?.readBuffer || null);
+      const pending = R.compileAsync ? R.compileAsync(this.scene, this.camera) : R.compile(this.scene, this.camera);
+      R.setRenderTarget(prev);
+      await pending;
     } catch {
       // Warming is an optimisation; anything it misses compiles on first use.
     }

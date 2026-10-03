@@ -1,3 +1,4 @@
+import { FarProxy } from './FarProxy.js';
 import * as THREE from 'three';
 // Cockpit view is the default: you asked to look through the windscreen, and
 // that only means anything if it's what you get when you sit down.
@@ -553,7 +554,8 @@ export class FreeRoam {
     }
     if (!this._torchPool) {
       this._torchPool = [];
-      for (let i = 0; i < 6; i++) {
+      // Three, leaving one pool light for muzzle flashes underground.
+      for (let i = 0; i < 3; i++) {
         const l = g.effects.reserveLight();
         if (!l) break;
         l.color.setHex(0xff9a3c);
@@ -565,7 +567,7 @@ export class FreeRoam {
     }
     const pool = this._torchPool;
     const p = g.player.position;
-    // Nearest six by insertion into a tiny fixed list — cheaper and far less
+    // Nearest few by insertion into a tiny fixed list — cheaper and far less
     // garbage than sorting two hundred every frame.
     const best = [];
     for (const t of cave.torches) {
@@ -797,6 +799,8 @@ export class FreeRoam {
   _applyDents(car) {
     const t = Math.min(1, (car._dented || 0) / (1.4 * (car.maxHealth || 100)));
     if (!car.group) return;
+    // Cars share their materials; scorch only this one's copies.
+    car.ownMaterials?.();
     car.group.traverse((o) => {
       if (!o.isMesh || !o.material || !o.material.color) return;
       if (o.userData._baseCol === undefined) {
@@ -1368,6 +1372,16 @@ export class FreeRoam {
       if (!v || !v.group || !v.setLOD) continue;
       v.setLOD(cam.distanceTo(v.position));
     }
+    // Planes and boats had no LOD at all: a parked plane was fifty-odd draw
+    // calls from across the airfield. Merged past 120 m unless crewed.
+    for (const v of this.aircraft || []) this._farCraft(v, cam);
+    for (const v of this.boats || []) this._farCraft(v, cam);
+  }
+
+  _farCraft(v, cam) {
+    if (!v || !v.group || !v.position) return;
+    if (!v._far) v._far = new FarProxy(v.group);
+    v._far.set(!v.driver && cam.distanceTo(v.position) > 120);
   }
 
   _updateDriving(dt) {

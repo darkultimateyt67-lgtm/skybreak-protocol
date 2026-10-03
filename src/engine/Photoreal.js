@@ -157,7 +157,10 @@ export class Photoreal {
     // Shadows off entirely on POTATO: a shadow pass re-renders every caster
     // in the scene, so it's a whole extra geometry pass to delete.
     g.renderer.shadowMap.enabled = q.shadows !== false;
-    g.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // PCF rather than PCFSoft: the soft variant made every lit shader ~20%
+    // slower to compile and to run. PCF honours shadow.radius (PCFSoft ignores
+    // it), which keeps the edges soft — see _applyShadowQuality.
+    g.renderer.shadowMap.type = THREE.PCFShadowMap;
     g.renderer.setPixelRatio(Math.min(window.devicePixelRatio, q.pixelCap) * (g.settings.renderScale ?? 1));
 
     if (this.composer) this.composer.dispose?.();
@@ -166,13 +169,51 @@ export class Photoreal {
 
     // --- Ambient occlusion ------------------------------------------------
     if (q.ao) {
-      const ao = new SSAOPass(g.scene, g.camera, w, h);
+      // 16 samples at half resolution instead of 32 at full: AO is a soft,
+      // blurred term, so this reads the same at a fraction of the cost —
+      // it was the single most expensive pass on HIGH.
+      const ao = new SSAOPass(g.scene, g.camera, w, h, 16);
+      const aoSize = ao.setSize.bind(ao);
+      ao.setSize = (sw, sh) => aoSize(Math.max(1, Math.floor(sw / 2)), Math.max(1, Math.floor(sh / 2)));
       // Tuned for a world measured in metres: a ~1.2 m contact radius reads
       // as real corner shadowing without haloing distant geometry.
       ao.kernelRadius = 1.2;
       ao.minDistance = 0.0015;
       ao.maxDistance = 0.12;
       ao.output = SSAOPass.OUTPUT.Default;
+      // The AO pass re-renders the whole scene for its normals — out to the
+      // camera's 1.6 km far plane, doubling every draw call on HIGH. Contact
+      // shading a kilometre away is far below a pixel, so the pass runs with
+      // a 200 m far plane (frustum culling then drops the rest) and its depth
+      // thresholds rescaled so they still mean the same distances in metres.
+      // Refreshing the projection each frame also keeps AO right when the
+      // FOV changes (aiming, sprinting); it used to keep the startup one.
+      const AO_FAR = 200;
+      const baseMin = ao.minDistance, baseMax = ao.maxDistance;
+      const aoRender = ao.render.bind(ao);
+      ao.render = (renderer, writeBuffer, readBuffer, dt, mask) => {
+        const cam = g.camera;
+        const far = cam.far;
+        const f = Math.min(far, AO_FAR);
+        const k = (far - cam.near) / (f - cam.near);
+        cam.far = f;
+        cam.updateProjectionMatrix();
+        const u = ao.ssaoMaterial.uniforms;
+        u.cameraNear.value = cam.near;
+        u.cameraFar.value = f;
+        u.cameraProjectionMatrix.value.copy(cam.projectionMatrix);
+        u.cameraInverseProjectionMatrix.value.copy(cam.projectionMatrixInverse);
+        ao.minDistance = baseMin * k;
+        ao.maxDistance = baseMax * k;
+        try {
+          aoRender(renderer, writeBuffer, readBuffer, dt, mask);
+        } finally {
+          cam.far = far;
+          cam.updateProjectionMatrix();
+          ao.minDistance = baseMin;
+          ao.maxDistance = baseMax;
+        }
+      };
       composer.addPass(ao);
       this.ao = ao;
     }
@@ -249,7 +290,7 @@ export class Photoreal {
     this._sunOffset = sun.position.clone();
     this._shadowExtent = this.game.world.def && this.game.world.def.mode === 'br' ? 90 : 150;
     sun.shadow.mapSize.set(size, size);
-    sun.shadow.radius = 3.5;
+    sun.shadow.radius = 2;
     sun.shadow.bias = -0.00035;
     sun.shadow.normalBias = 0.035;
     if (sun.shadow.map) {

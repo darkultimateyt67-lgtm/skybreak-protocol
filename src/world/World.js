@@ -14,6 +14,9 @@ import { normalFromBump } from '../engine/Photoreal.js';
  * group everything is parented to, and registers matching physics colliders.
  * Switching maps = dispose() the old world and construct a new one.
  */
+const _blockC = new THREE.Vector3();
+const _blockS = new THREE.Vector3();
+
 export class World {
   constructor(game, mapId = 'halcyon') {
     this.game = game;
@@ -608,18 +611,34 @@ export class World {
     // A world-scaled tile needs its own geometry, since UVs are baked per box.
     // Everything else keeps sharing the one box, and the static merge folds
     // the clones away afterwards so this costs draw calls nowhere.
+    let quat = null;
+    if (opts.tiltX || opts.rotY || opts.rotZ) {
+      const e = new THREE.Euler(opts.tiltX || 0, opts.rotY || 0, opts.rotZ || 0, 'YXZ');
+      quat = new THREE.Quaternion().setFromEuler(e);
+    }
+    // While a city is being built for baking (see City.build), a plain box
+    // is only a record — material, centre, size, rotation — never a Mesh.
+    // The city creates over 100,000 of them, and as full scene objects they
+    // were most of its load time and most of its memory, all of it thrown
+    // away moments later by the merge.
+    if (this._bakeBoxes && !opts.tile && opts.visible !== false) {
+      const rec = { isStaticBox: true, material: mat, x, y: y + h / 2, z, w, h, d, quat, bld: null };
+      this._bakeBoxes.push(rec);
+      if (opts.collide !== false) {
+        this.physics.addBox(_blockC.set(x, y + h / 2, z), _blockS.set(w, h, d), quat, {
+          wallRun: !!opts.wallRun,
+          surface: opts.surface || 'metal'
+        });
+      }
+      return rec;
+    }
     const geo = opts.tile
       ? this._uvScaleBox(this._boxGeo.clone(), w, h, d, opts.tile)
       : this._boxGeo;
     const mesh = new THREE.Mesh(geo, mat);
     mesh.scale.set(w, h, d);
     mesh.position.set(x, y + h / 2, z);
-    let quat = null;
-    if (opts.tiltX || opts.rotY) {
-      const e = new THREE.Euler(opts.tiltX || 0, opts.rotY || 0, 0, 'YXZ');
-      quat = new THREE.Quaternion().setFromEuler(e);
-      mesh.quaternion.copy(quat);
-    }
+    if (quat) mesh.quaternion.copy(quat);
     if (opts.visible !== false) {
       mesh.castShadow = opts.shadow !== false;
       mesh.receiveShadow = true;
@@ -632,7 +651,7 @@ export class World {
       });
       // Keep undergrowth from sprouting through anything solid. Floors are
       // huge and shouldn't clear the whole map, so they're skipped.
-      if (this.cover && w < 60 && d < 60) {
+      if (this.cover && this.def.groundCover && w < 60 && d < 60) {
         this.cover.exclude(x, z, w * 0.5 + 0.6, d * 0.5 + 0.6);
       }
     }
