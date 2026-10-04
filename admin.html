@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex" />
+  <title>SKYBREAK Control</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#9650;</text></svg>" />
+  <link rel="stylesheet" href="/src/admin/admin.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand">SKYBREAK <span>CONTROL</span></div>
+    <div id="who"></div>
+  </header>
+
+  <main>
+    <section id="gate" class="card">
+      <p>Loading…</p>
+    </section>
+
+    <div id="dash" class="hidden">
+      <section class="card hero-card">
+        <div class="hero-label">Online now</div>
+        <div class="hero"><span id="online-now">0</span><small> / <span id="online-max">50</span></small></div>
+        <div class="meter"><div id="meter-fill"></div></div>
+        <div id="limit-row" class="row creator-only">
+          <label>Player limit <input id="max-input" type="number" min="1" max="1000" /></label>
+          <button id="max-save">Save</button>
+          <button id="free-slots" class="ghost" title="Frees slots held by players who are no longer online">Free stuck slots</button>
+          <span id="limit-msg" class="muted"></span>
+        </div>
+      </section>
+
+      <section class="tiles" id="tiles"></section>
+
+      <section class="card">
+        <h2>Playing right now</h2>
+        <div class="table-wrap"><table id="live-table"></table></div>
+      </section>
+
+      <section class="card">
+        <div class="row between">
+          <h2>Every player</h2>
+          <input id="player-search" type="search" placeholder="Search callsign, device, GPU…" />
+        </div>
+        <div class="table-wrap"><table id="players-table"></table></div>
+      </section>
+
+      <section class="card">
+        <h2>Recent sessions</h2>
+        <div class="table-wrap"><table id="sessions-table"></table></div>
+      </section>
+
+      <section class="card">
+        <h2>Performance by graphics chip</h2>
+        <p class="muted">Average frame rate players last reported, grouped by graphics chip. Low numbers show where the game needs to get lighter.</p>
+        <div class="table-wrap"><table id="gpu-table"></table></div>
+      </section>
+
+      <section class="card creator-only">
+        <h2>Staff</h2>
+        <p class="muted">Anyone who signs in with Google (here, or with F9 in the game) appears below. Creators' changes are saved into the game for everyone; admins get the in-game powers and can view this page, but what they place disappears when they reload.</p>
+        <div class="table-wrap"><table id="staff-table"></table></div>
+      </section>
+
+      <section class="card">
+        <h2>Models saved into the game</h2>
+        <p class="muted">Placed by creators in game (F9 → Models). Everyone sees these.</p>
+        <div class="table-wrap"><table id="models-table"></table></div>
+      </section>
+    </div>
+  </main>
+
+  <script type="module" src="/src/admin/admin.js"></script>
+</body>
+</html>

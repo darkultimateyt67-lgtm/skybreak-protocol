@@ -173,6 +173,17 @@ export class FreeRoam {
     g.hud.brToast?.('GTAZ — FREE ROAM', 'No missions. F to take a car, F to get out.');
   }
 
+  /** Staff power: a fresh car a few metres ahead of `pos`, facing `yaw`. */
+  spawnCarNear(pos, yaw) {
+    if (!this.city) return null;
+    const car = new Vehicle(this.city, pos.x - Math.sin(yaw) * 6, pos.z - Math.cos(yaw) * 6);
+    car.yaw = yaw;
+    if (car.style.id === 'bike') car.setOccupantsVisible(false);
+    car.syncMesh();
+    this.parked.push(car);
+    return car;
+  }
+
   /** Scatter enterable cars along the kerbs so one is always nearby. */
   _spawnParked(n) {
     const c = this.city;

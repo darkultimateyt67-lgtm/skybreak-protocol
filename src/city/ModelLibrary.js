@@ -20,7 +20,9 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
  * sport-chassis car, `jet.glb` every jet, and so on.
  */
 
-const BASE = '/models/';
+// Relative to wherever the game is served: '/models/' pointed at the domain
+// root, which on GitHub Pages (served from /skybreak-protocol/) is not ours.
+const BASE = import.meta.env.BASE_URL + 'models/';
 
 export class ModelLibrary {
   constructor() {

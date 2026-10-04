@@ -1,0 +1,51 @@
+{
+  "rules": {
+    "config": {
+      ".read": "auth != null",
+      ".write": "root.child('roles').child(auth.uid).val() === 'creator'"
+    },
+    "roles": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "root.child('roles').child(auth.uid).val() === 'creator' || (!root.child('roles').exists() && $uid === auth.uid && newData.val() === 'creator' && auth.token.firebase.sign_in_provider === 'google.com')",
+        ".validate": "newData.val() === 'creator' || newData.val() === 'admin'"
+      }
+    },
+    "users": {
+      ".read": "root.child('roles').child(auth.uid).exists()",
+      "$uid": {
+        ".write": "$uid === auth.uid && auth.token.firebase.sign_in_provider === 'google.com'"
+      }
+    },
+    "slots": {
+      ".read": "auth != null",
+      "$i": {
+        ".write": "auth != null && ((!data.exists() && newData.val() === auth.uid) || (data.val() === auth.uid && !newData.exists()) || root.child('roles').child(auth.uid).val() === 'creator')"
+      }
+    },
+    "live": {
+      ".read": "root.child('roles').child(auth.uid).exists()",
+      "$uid": {
+        ".write": "$uid === auth.uid"
+      }
+    },
+    "players": {
+      ".read": "root.child('roles').child(auth.uid).exists()",
+      ".indexOn": ["lastSeen"],
+      "$uid": {
+        ".write": "$uid === auth.uid"
+      }
+    },
+    "sessions": {
+      ".read": "root.child('roles').child(auth.uid).exists()",
+      ".indexOn": ["start"],
+      "$sid": {
+        ".write": "auth != null && (data.exists() ? data.child('uid').val() === auth.uid : newData.child('uid').val() === auth.uid)"
+      }
+    },
+    "world": {
+      ".read": true,
+      ".write": "root.child('roles').child(auth.uid).val() === 'creator'"
+    }
+  }
+}

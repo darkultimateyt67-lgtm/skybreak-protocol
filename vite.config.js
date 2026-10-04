@@ -12,6 +12,13 @@ export default defineConfig({
   },
   build: {
     target: 'es2022',
-    chunkSizeWarningLimit: 1500
+    chunkSizeWarningLimit: 1500,
+    // Two pages: the game, and the staff dashboard (admin.html).
+    rollupOptions: {
+      input: {
+        main: 'index.html',
+        admin: 'admin.html'
+      }
+    }
   }
 });

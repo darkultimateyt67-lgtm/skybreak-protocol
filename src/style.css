@@ -1356,3 +1356,65 @@ html, body {
   text-align: center;
   min-height: 14px;
 }
+
+/* ---------- Online: staff panel, servers-full screen, menu row ---------- */
+
+#online-row {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+  gap: 12px; margin: 4px auto 18px; max-width: 620px;
+}
+#online-note { font-size: 11px; letter-spacing: 0.5px; color: rgba(215, 244, 251, 0.5); }
+
+#staff {
+  position: absolute; inset: 0; z-index: 40;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(3, 6, 10, 0.55);
+}
+#staff.hidden, #server-full.hidden { display: none; }
+#staff .st-card {
+  width: min(640px, 94vw); max-height: 90vh; overflow-y: auto;
+  padding: 18px 20px; text-align: left;
+  background: rgba(8, 14, 20, 0.96); border: 1px solid var(--edge);
+  box-shadow: 0 0 40px rgba(55, 230, 255, 0.15);
+}
+#staff .st-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+#staff .st-top b { font-size: 16px; letter-spacing: 5px; color: var(--cyan); }
+#staff .st-x { background: none; border: 0; color: var(--text); font-size: 18px; cursor: pointer; }
+#staff .st-h { margin: 16px 0 8px; font-size: 11px; letter-spacing: 4px; color: var(--cyan); }
+#staff .st-note { font-size: 13px; line-height: 1.5; color: rgba(215, 244, 251, 0.85); margin: 6px 0; }
+#staff .st-note.small { font-size: 11px; color: rgba(215, 244, 251, 0.6); }
+#staff .st-note a { color: var(--cyan); }
+#staff .st-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+#staff .st-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+#staff button {
+  font-family: var(--font); font-size: 11px; letter-spacing: 1.5px; font-weight: 700;
+  padding: 9px 12px; cursor: pointer; color: var(--text);
+  background: rgba(55, 230, 255, 0.06); border: 1px solid var(--edge);
+}
+#staff button:hover { border-color: var(--cyan); color: var(--cyan); }
+#staff button.st-tog.on { background: var(--cyan); color: #04141a; border-color: var(--cyan); }
+#staff button.st-main { background: var(--cyan); color: #04141a; border-color: var(--cyan); }
+#staff input {
+  font-family: var(--font); font-size: 12px; padding: 8px; color: var(--text);
+  background: rgba(0, 0, 0, 0.4); border: 1px solid var(--edge);
+}
+#staff .st-url { flex: 1 1 240px; }
+#staff .st-scale { width: 70px; }
+#staff .st-solid { font-size: 11px; color: rgba(215, 244, 251, 0.7); }
+#staff .st-models { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+#staff .st-model { display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+#staff .st-model em { color: var(--orange); font-style: normal; font-size: 10px; letter-spacing: 1px; margin-left: 6px; }
+#staff .st-msg { min-height: 18px; margin-top: 12px; font-size: 12px; color: var(--cyan); }
+#staff .st-msg.bad { color: var(--red); }
+
+#server-full {
+  position: absolute; inset: 0; z-index: 45;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(3, 6, 10, 0.9);
+}
+#server-full .sf-card { text-align: center; padding: 24px; max-width: 460px; }
+#server-full .sf-title { font-size: 34px; font-weight: 800; letter-spacing: 8px; color: var(--red); text-shadow: 0 0 24px rgba(255, 59, 77, 0.5); }
+#server-full p { margin-top: 12px; font-size: 14px; line-height: 1.6; color: var(--text); }
+#server-full .sf-count { color: rgba(215, 244, 251, 0.6); font-size: 12px; }
+#server-full .sf-row { display: flex; gap: 12px; justify-content: center; margin-top: 18px; }
+#server-full .btn-main { margin: 0; padding: 11px 30px; font-size: 14px; }

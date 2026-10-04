@@ -718,7 +718,7 @@ export class WeaponSystem {
     const player = game.player;
     const cam = game.camera;
     w.cooldown = 60 / w.def.rpm;
-    w.mag--;
+    if (!(game.admin && game.admin.ammo)) w.mag--;
 
     cam.getWorldDirection(_dir);
     _right.setFromMatrixColumn(cam.matrixWorld, 0);

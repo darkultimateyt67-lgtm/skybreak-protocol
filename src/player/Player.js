@@ -252,6 +252,12 @@ export class Player {
     this.pitch -= input.mouseDY * sens * (this.game.settings.invertY ? -1 : 1);
     this.pitch = THREE.MathUtils.clamp(this.pitch, -1.45, 1.45);
 
+    // Staff power: free flight, straight through anything.
+    if (this.game.admin && this.game.admin.fly) {
+      this._fly(dt, input);
+      return;
+    }
+
     // --- Input intent -----------------------------------------------------
     _fwd.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     _right.set(-_fwd.z, 0, _fwd.x);
@@ -596,6 +602,28 @@ export class Player {
     }
   }
 
+  /** Staff flight: look where you want to go. No gravity, no collision. */
+  _fly(dt, input) {
+    const cp = Math.cos(this.pitch);
+    _fwd.set(-Math.sin(this.yaw) * cp, Math.sin(this.pitch), -Math.cos(this.yaw) * cp);
+    _right.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+    _wish.set(0, 0, 0);
+    if (input.key('KeyW')) _wish.add(_fwd);
+    if (input.key('KeyS')) _wish.sub(_fwd);
+    if (input.key('KeyD')) _wish.add(_right);
+    if (input.key('KeyA')) _wish.sub(_right);
+    if (input.key('Space')) _wish.y += 1;
+    if (input.key('ControlLeft') || input.key('KeyC')) _wish.y -= 1;
+    if (_wish.lengthSq() > 0) _wish.normalize();
+    const speed = input.key('ShiftLeft') ? 70 : 20;
+    this.position.addScaledVector(_wish, speed * dt);
+    this.velocity.set(0, 0, 0);
+    this.grounded = false;
+    this.sliding = false;
+    this.wallrun = null;
+    this._updateCamera(dt, 0);
+  }
+
   _updateCamera(dt, hSpeed) {
     const cam = this.camera;
 
@@ -652,6 +680,7 @@ export class Player {
    */
   damage(amount, fromPos) {
     if (!this.alive) return;
+    if (this.game.admin && this.game.admin.god) return;
     const absorbed = Math.min(this.armor, amount * 0.55);
     this.armor -= absorbed;
     this.health -= amount - absorbed;

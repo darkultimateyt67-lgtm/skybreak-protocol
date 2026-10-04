@@ -29,6 +29,10 @@ import { Music } from '../audio/Music.js';
 import { HUD } from '../ui/HUD.js';
 import { Minimap } from '../ui/Minimap.js';
 import { Loading } from '../ui/Loading.js';
+import { Online } from '../online/Online.js';
+import { PlacedModels } from '../online/PlacedModels.js';
+import { StaffPanel } from '../ui/StaffPanel.js';
+import { showServerFull } from '../ui/ServerFull.js';
 import { MAPS } from '../world/maps.js';
 
 /**
@@ -87,6 +91,8 @@ export class Game {
     this._menuAngle = 0;
     this._fpsTime = 0;
     this._fpsFrames = 0;
+    // Staff powers, switched from the staff panel (F9). Off for everyone else.
+    this.admin = { fly: false, god: false, ammo: false };
   }
 
   _loadSettings() {
@@ -361,6 +367,15 @@ export class Game {
     this.thirdPerson = new ThirdPerson(this);
     this.freeRoam = new FreeRoam(this);
     this.crash = new CrashScene(this);
+    // Online: player limit, play statistics, staff roles, saved models.
+    this.online = new Online(this);
+    this.placed = new PlacedModels(this);
+    this.staffPanel = new StaffPanel(this);
+    if (this.online.enabled) {
+      document.getElementById('online-note')?.classList.remove('hidden');
+      // Fetch the SDK and sign in once the menu is up, off the critical path.
+      setTimeout(() => this.online.boot(), 2500);
+    }
 
     // Phones and tablets get on-screen controls and skip pointer lock.
     this.touch = new TouchControls(this);
@@ -459,6 +474,22 @@ export class Game {
     // loading screen up FIRST and lets it paint before the heavy work starts.
     // Without this the menu simply froze for the whole build.
     const heavy = rebuild || this.isGTAZ;
+
+    // --- Player limit ---------------------------------------------------------
+    // Before any building: someone turned away shouldn't sit through a load.
+    if (this.online.enabled && !this.online.playing) {
+      Loading.show(this.settings.mode, this._loadingLine());
+      Loading.step('Connecting to the server', 0.02, 0.05, 1500);
+      await Loading.frame();
+      const gate = await this.online.join();
+      if (!gate.ok) {
+        Loading.hide();
+        showServerFull(gate.max, () => this.start(useLock));
+        return;
+      }
+      if (!heavy) Loading.hide();
+    }
+
     if (heavy) {
       this._loading = true;
       Loading.show(this.settings.mode, this._loadingLine());
@@ -534,6 +565,8 @@ export class Game {
       Loading.hide();
     }
     if (useLock) await this._acquireLook();
+    // Models creators have saved into this map. They stream in behind play.
+    if (this.online.enabled) this.placed.loadSaved();
 
     // GTAZ: hand the city over to the free-roam manager and get out of the way.
     if (this.isGTAZ) {
@@ -645,6 +678,7 @@ export class Game {
   }
 
   toMenu() {
+    this.online.leave();
     if (this.crash && this.crash.active) this.crash.dispose();
     // Clear the per-run override; whether the crash plays is decided by the
     // persisted crashSeenMaps, so it stays skipped once you've seen it.
@@ -946,7 +980,8 @@ export class Game {
     this._fpsFrames++;
     this._fpsTime += dt;
     if (this._fpsTime >= 0.5) {
-      this.hud.setFPS(Math.round(this._fpsFrames / this._fpsTime));
+      this.fps = Math.round(this._fpsFrames / this._fpsTime);
+      this.hud.setFPS(this.fps);
       this._fpsFrames = 0;
       this._fpsTime = 0;
     }

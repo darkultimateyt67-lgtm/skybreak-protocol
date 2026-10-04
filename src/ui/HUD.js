@@ -430,6 +430,7 @@ export class HUD {
     const $ = (id) => document.getElementById(id);
 
     $('btn-start').addEventListener('click', () => game.start());
+    $('btn-staff').addEventListener('click', () => game.staffPanel.show());
     $('btn-continue').addEventListener('click', () => game.continueCareer());
     $('btn-br-again').addEventListener('click', () => {
       document.getElementById('br-result').classList.add('hidden');
